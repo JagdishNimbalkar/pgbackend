@@ -7,7 +7,7 @@ from typing import List, Optional
 
 # Import our tools and agent
 import tools
-from agent import seo_agent_app
+from agent import seo_agent_app, backlinks_agent_app
 
 app = FastAPI(title="SEO Agent API", version="1.0")
 
@@ -77,6 +77,22 @@ def run_audit_agent(request: AuditRequest):
         # Invoke LangGraph workflow
         result = seo_agent_app.invoke(initial_state)
         return result["final_report"]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/agent/backlinks")
+def run_backlinks_agent(request: UrlRequest):
+    initial_state = {
+        "url": request.url,
+        "backlinks_data": {},
+        "analysis_report": {},
+        "errors": []
+    }
+    
+    try:
+        # Invoke LangGraph backlinks workflow
+        result = backlinks_agent_app.invoke(initial_state)
+        return result["analysis_report"]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
