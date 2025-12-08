@@ -168,7 +168,7 @@ def get_page_speed(url: str):
 # --- 4. Keyword Analyzer ---
 def analyze_keyword_density(text: str = "", url: str = None):
     """
-    Analyzes keyword frequency on a page.
+    Analyzes keyword frequency on a page, filtering out common stopwords and non-meaningful terms.
     """
     content = text
     if url:
@@ -183,16 +183,55 @@ def analyze_keyword_density(text: str = "", url: str = None):
         except Exception as e:
             return {"error": str(e)}
 
-    # Simple Tokenization
+    # Comprehensive English stopwords list - filters common words that don't provide keyword insights
+    stop_words = set([
+        # Articles & Determiners
+        'the', 'a', 'an', 'this', 'that', 'these', 'those', 'some', 'any', 'all', 'each', 'every', 'other',
+        # Pronouns
+        'i', 'me', 'my', 'mine', 'myself', 'we', 'us', 'our', 'ours', 'ourselves', 'you', 'your', 'yours', 'yourself', 'yourselves',
+        'he', 'him', 'his', 'himself', 'she', 'her', 'hers', 'herself', 'it', 'its', 'itself', 'they', 'them', 'their', 'theirs', 'themselves',
+        'who', 'whom', 'whose', 'what', 'which', 'whoever', 'whomever', 'whatever', 'whichever',
+        # Auxiliary verbs & common verbs
+        'is', 'am', 'are', 'was', 'were', 'be', 'being', 'been', 'do', 'does', 'did', 'doing', 'have', 'has', 'had', 'having',
+        'can', 'could', 'will', 'would', 'shall', 'should', 'may', 'might', 'must', 'ought', 'to', 'should',
+        'get', 'got', 'getting', 'make', 'made', 'making', 'go', 'goes', 'going', 'know', 'knew', 'knowing',
+        # Common prepositions
+        'in', 'on', 'at', 'by', 'for', 'from', 'to', 'of', 'with', 'without', 'through', 'during', 'before', 'after',
+        'above', 'below', 'between', 'among', 'into', 'out', 'up', 'down', 'over', 'under', 'near', 'about',
+        # Conjunctions & connectors
+        'and', 'or', 'but', 'nor', 'yet', 'so', 'because', 'as', 'if', 'unless', 'when', 'where', 'while', 'until',
+        # Common adverbs & modifiers
+        'not', 'no', 'yes', 'very', 'just', 'only', 'more', 'most', 'less', 'least', 'also', 'too', 'so', 'then',
+        'now', 'here', 'there', 'how', 'why', 'when', 'where', 'almost', 'already', 'always', 'never', 'ever', 'still',
+        # Common nouns & filler words
+        'one', 'two', 'first', 'second', 'thing', 'way', 'time', 'day', 'year', 'place', 'people', 'man', 'woman', 'person',
+        'said', 'say', 'says', 'told', 'tell', 'tells', 'being', 'having', 'getting', 'making', 'come', 'came', 'coming',
+        # Numbers and common fillers
+        'etc', 'amp', 'nbsp', 'quot', 'apos', 'use', 'used', 'using', 'new', 'old', 'good', 'bad', 'best', 'worst',
+        'same', 'different', 'like', 'unlike', 'such', 'such', 'even', 'own', 'many', 'several', 'few', 'much',
+        # Single letters and common abbreviations
+        'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
+    ])
+    
+    # Tokenization: extract words
     words = re.findall(r'\w+', content.lower())
-    # Filter common stop words (simplified list)
-    stop_words = set(['the', 'and', 'is', 'in', 'it', 'to', 'of', 'for', 'on', 'a', 'an', 'that', 'this', 'with'])
-    filtered_words = [w for w in words if w not in stop_words and len(w) > 3]
+    
+    # Filter: remove stopwords and short words (less than 3 chars)
+    # Only keep meaningful content words
+    filtered_words = [
+        w for w in words 
+        if w not in stop_words and len(w) >= 3 and not w.isdigit()
+    ]
     
     counter = Counter(filtered_words)
     top_keywords = counter.most_common(10)
     
-    return {"top_keywords": [{"word": w, "count": c} for w, c in top_keywords], "total_words": len(filtered_words)}
+    return {
+        "top_keywords": [{"word": w, "count": c} for w, c in top_keywords],
+        "total_words": len(filtered_words),
+        "filter_type": "Intelligent Stopword Filtering",
+        "filter_description": "Excludes common English stopwords, pronouns, auxiliaries, and short words"
+    }
 
 # --- 5. SERP Spy (Competitor Analysis) ---
 def get_competitor_rankings(keyword: str):
