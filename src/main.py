@@ -20,7 +20,7 @@ from tools import (
     crawl_sitemap_pages,
     parse_sitemap
 )
-from agent import seo_agent_app, backlinks_agent_app
+from agent import seo_agent_app, backlinks_agent_app, link_categorization_agent_app
 
 app = FastAPI(title="SEO Agent API", version="1.0")
 
@@ -155,6 +155,26 @@ def run_backlinks_agent(request: UrlRequest):
         # Invoke LangGraph backlinks workflow
         result = backlinks_agent_app.invoke(initial_state)
         return result["analysis_report"]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/agent/link-categorization")
+def run_link_categorization_agent(request: UrlRequest):
+    """
+    Run the Link Categorization Agent to collect all links on a page,
+    categorize them, and provide insights and recommendations.
+    """
+    initial_state = {
+        "url": request.url,
+        "links_data": {},
+        "categorized_report": {},
+        "errors": []
+    }
+    
+    try:
+        # Invoke LangGraph link categorization workflow
+        result = link_categorization_agent_app.invoke(initial_state)
+        return result["categorized_report"]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
