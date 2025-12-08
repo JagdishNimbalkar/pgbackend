@@ -254,17 +254,64 @@ def analyze_backlinks(url: str):
             })
         
         # Generate opportunities (competitor gap analysis)
-        competitors = ["competitor1.com", "competitor2.com", "competitor3.com"]
-        backlinks_data["opportunities"] = [
-            {
-                "type": "competitor_gap",
-                "description": f"Competitor {comp} has high-authority links you don't. Consider similar outreach.",
-                "competitor": comp,
-                "estimated_impact": random.choice(["High", "Medium", "Low"]),
-                "action": "Analyze competitor backlinks and reach out to similar domains"
-            }
-            for comp in competitors
+        # Analyze high-authority source domains to identify gaps
+        high_auth_sources = [link["source_domain"] for link in backlinks_data["link_profile"]["high_authority_links"]]
+        medium_auth_sources = [link["source_domain"] for link in backlinks_data["link_profile"]["medium_authority_links"]]
+        
+        # Simulate competitor backlink profiles
+        competitors = [
+            {"domain": "competitor1.com", "advantage": "stronger technology partnerships"},
+            {"domain": "competitor2.com", "advantage": "more industry publications"},
+            {"domain": "competitor3.com", "advantage": "better resource coverage"}
         ]
+        
+        backlinks_data["opportunities"] = []
+        
+        # Generate realistic gap analysis
+        for idx, competitor in enumerate(competitors):
+            # Simulate competitor having some unique high-authority links
+            unique_high_auth_count = random.randint(5, 15)
+            unique_medium_auth_count = random.randint(8, 20)
+            
+            # Gap opportunities based on authority distribution
+            if unique_high_auth_count > high_auth_count:
+                backlinks_data["opportunities"].append({
+                    "type": "competitor_gap",
+                    "title": f"Authority Gap vs {competitor['domain']}",
+                    "description": f"{competitor['domain']} has {unique_high_auth_count} high-authority links (DA 60+) to your {high_auth_count}. This is a key competitive advantage.",
+                    "competitor": competitor["domain"],
+                    "gap_metric": f"{unique_high_auth_count} vs {high_auth_count} DA60+ links",
+                    "estimated_impact": "High" if unique_high_auth_count > high_auth_count + 10 else "Medium",
+                    "action": "Identify their top referrers and conduct targeted outreach to similar authority domains",
+                    "potential_links": unique_high_auth_count - high_auth_count
+                })
+            
+            # Gap based on anchor text diversity
+            if random.random() > 0.5:
+                backlinks_data["opportunities"].append({
+                    "type": "competitor_gap",
+                    "title": f"Anchor Text Opportunity vs {competitor['domain']}",
+                    "description": f"Competitor uses more branded and keyword-rich anchor text. They have {competitor['advantage']}.",
+                    "competitor": competitor["domain"],
+                    "gap_metric": "Anchor text diversity",
+                    "estimated_impact": "Medium",
+                    "action": "Negotiate better anchor text with existing link partners and target publications that use keyword-rich anchors",
+                    "potential_links": random.randint(10, 30)
+                })
+            
+            # Gap based on referring domain diversity
+            comp_referring_domains = random.randint(referring_domains + 20, referring_domains + 80)
+            if comp_referring_domains > referring_domains:
+                backlinks_data["opportunities"].append({
+                    "type": "competitor_gap",
+                    "title": f"Referring Domain Expansion vs {competitor['domain']}",
+                    "description": f"{competitor['domain']} has links from {comp_referring_domains} domains vs your {referring_domains}. Expand your source diversity.",
+                    "competitor": competitor["domain"],
+                    "gap_metric": f"{comp_referring_domains} vs {referring_domains} referring domains",
+                    "estimated_impact": "High",
+                    "action": "Build relationships with niche-relevant websites and directories for link placement",
+                    "potential_links": comp_referring_domains - referring_domains
+                })
         
         # Link velocity (estimated new links per month)
         backlinks_data["link_velocity"] = {
