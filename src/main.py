@@ -1,12 +1,16 @@
 import os
+import sys
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 
+# Add src directory to Python path
+sys.path.insert(0, os.path.dirname(__file__))
+
 # Import our tools and agent
-import tools
+from tools import extract_meta_tags, check_broken_links, analyze_backlinks
 from agent import seo_agent_app, backlinks_agent_app
 
 app = FastAPI(title="SEO Agent API", version="1.0")
