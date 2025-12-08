@@ -174,9 +174,56 @@ def run_link_categorization_agent(request: UrlRequest):
     try:
         # Invoke LangGraph link categorization workflow
         result = link_categorization_agent_app.invoke(initial_state)
-        return result["categorized_report"]
+        final_report = result["categorized_report"]
+        
+        # Flatten the nested structure for frontend consumption
+        if isinstance(final_report, dict) and "report" in final_report:
+            # Extract the actual report data from the nested structure
+            actual_report = final_report.get("report", {})
+            
+            # Flatten the category data and collect all links
+            categories = {}
+            all_links = []
+            detailed_categories = actual_report.get("detailed_categories", {})
+            
+            for category_name, category_data in detailed_categories.items():
+                links_in_category = category_data.get("links", [])
+                categories[category_name] = {
+                    "count": category_data.get("count", 0),
+                    "examples": links_in_category[:3]  # Get first 3 examples
+                }
+                
+                # Add all links from this category to the main list
+                for link in links_in_category:
+                    all_links.append({
+                        "url": link.get("url", ""),
+                        "anchor_text": link.get("anchor_text", "[No text]"),
+                        "category": category_name,
+                        "is_internal": link.get("is_internal", False),
+                        "is_nofollow": link.get("is_nofollow", False),
+                        "is_sponsored": link.get("is_sponsored", False),
+                        "target": link.get("target", ""),
+                    })
+            
+            # Return flattened response matching component expectations
+            return {
+                "total_links": actual_report.get("total_links", 0),
+                "internal_links": actual_report.get("internal_links", 0),
+                "external_links": actual_report.get("external_links", 0),
+                "quality_score": actual_report.get("link_quality_score", 0),
+                "categories": categories,
+                "insights": actual_report.get("insights", []),
+                "warnings": actual_report.get("warnings", []),
+                "recommendations": actual_report.get("recommendations", []),
+                "summary": actual_report.get("summary", ""),
+                "all_links": all_links  # Send all links to frontend
+            }
+        
+        return final_report
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 if __name__ == "__main__":
     # Get port from environment variable (Required for Cloud Run / Render)
