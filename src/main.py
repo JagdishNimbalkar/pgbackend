@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +11,15 @@ from typing import List, Optional
 sys.path.insert(0, os.path.dirname(__file__))
 
 # Import our tools and agent
-from tools import extract_meta_tags, check_broken_links, analyze_backlinks
+from tools import (
+    extract_meta_tags, 
+    check_broken_links, 
+    analyze_backlinks,
+    extract_page_backlinks,
+    get_page_links_by_category,
+    crawl_sitemap_pages,
+    parse_sitemap
+)
 from agent import seo_agent_app, backlinks_agent_app
 
 app = FastAPI(title="SEO Agent API", version="1.0")
@@ -38,6 +47,13 @@ class KeywordRequest(BaseModel):
 class AuditRequest(BaseModel):
     url: str
     focus_areas: Optional[List[str]] = ["all"]
+
+class SitemapRequest(BaseModel):
+    sitemap_url: str
+    max_pages: Optional[int] = 50
+
+class UrlListRequest(BaseModel):
+    urls: List[str]  # Comma-separated or list of URLs
 
 # --- 1. Tool Belt API Endpoints ---
 
@@ -68,7 +84,44 @@ def tool_keyword_density(request: UrlRequest):
 @app.post("/tools/page-backlinks")
 def tool_extract_backlinks(request: UrlRequest):
     """Extract all outbound links (backlinks) from a given page"""
-    return tools.extract_page_backlinks(url=request.url)
+    return extract_page_backlinks(url=request.url)
+
+@app.post("/tools/links-by-category")
+def tool_categorized_links(request: UrlRequest):
+    """Extract all links from a page and categorize them"""
+    return get_page_links_by_category(url=request.url)
+
+@app.post("/tools/sitemap-parse")
+def tool_parse_sitemap(request: SitemapRequest):
+    """Parse a sitemap XML and extract all URLs"""
+    return parse_sitemap(sitemap_url=request.sitemap_url)
+
+@app.post("/tools/sitemap-crawl")
+def tool_crawl_sitemap(request: SitemapRequest):
+    """Crawl all pages from a sitemap and extract categorized links from each"""
+    return crawl_sitemap_pages(
+        sitemap_url=request.sitemap_url,
+        max_pages=request.max_pages
+    )
+
+@app.post("/tools/urls-batch-analyze")
+def tool_batch_analyze_urls(request: UrlListRequest):
+    """Analyze multiple URLs and extract categorized links from each"""
+    results = []
+    for url in request.urls:
+        try:
+            link_data = get_page_links_by_category(url=url)
+            results.append(link_data)
+            time.sleep(0.3)  # Rate limiting
+        except Exception as e:
+            results.append({"error": str(e), "url": url})
+    
+    return {
+        "total_urls_analyzed": len(request.urls),
+        "successful": len([r for r in results if 'error' not in r]),
+        "failed": len([r for r in results if 'error' in r]),
+        "results": results
+    }
 
 # --- 2. Orchestrated Agent Endpoint ---
 

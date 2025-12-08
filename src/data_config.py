@@ -270,3 +270,45 @@ DOMAIN_DIVERSITY_HIGH_IMPACT = 50   # More than 50 referring domains difference
 DOMAIN_DIVERSITY_MEDIUM_IMPACT = 20 # More than 20 referring domains difference
 
 DOFOLLOW_QUALITY_GAP_IMPACT = 5     # More than 5% dofollow ratio difference
+
+# ============================================================================
+# SITEMAP & LINK CATEGORIZATION CONFIGURATION
+# ============================================================================
+
+# Link categories for classification
+LINK_CATEGORIES = {
+    'navigation': {
+        'keywords': ['home', 'about', 'contact', 'services', 'products', 'menu', 'nav'],
+        'description': 'Navigation and menu links'
+    },
+    'social': {
+        'keywords': ['facebook', 'twitter', 'instagram', 'linkedin', 'youtube', 'pinterest', 'social'],
+        'description': 'Social media links'
+    },
+    'legal': {
+        'keywords': ['privacy', 'terms', 'disclaimer', 'legal', 'cookie', 'policy'],
+        'description': 'Legal and policy pages'
+    },
+    'business': {
+        'keywords': ['pricing', 'plans', 'features', 'blog', 'case-study', 'resources', 'guides'],
+        'description': 'Business and content pages'
+    },
+    'external': {
+        'keywords': [],  # Will be determined by domain check
+        'description': 'External third-party links'
+    },
+    'media': {
+        'keywords': ['image', 'video', 'pdf', 'download', 'media', 'gallery'],
+        'description': 'Media and downloadable content'
+    },
+    'utility': {
+        'keywords': ['search', 'filter', 'tag', 'category', 'archive', 'sitemap'],
+        'description': 'Utility and filter pages'
+    }
+}
+
+# Sitemap processing configuration
+SITEMAP_MAX_URLS = 1000  # Maximum URLs to process from sitemap
+SITEMAP_TIMEOUT = 30      # Timeout for sitemap fetching
+MAX_PAGES_TO_CRAWL = 50   # Maximum pages to crawl from sitemap
+CRAWL_TIMEOUT = 10        # Timeout per page crawl

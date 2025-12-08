@@ -5,6 +5,8 @@ import re
 import time
 from duckduckgo_search import DDGS
 import random
+from urllib.parse import urlparse, urljoin
+import xml.etree.ElementTree as ET
 from data_config import (
     STOPWORDS_SET,
     DOMAIN_ADJECTIVES,
@@ -37,7 +39,12 @@ from data_config import (
     REQUEST_TIMEOUT,
     HEAD_REQUEST_TIMEOUT,
     MAX_EXTERNAL_DOMAINS,
-    LINK_TYPE_DISTRIBUTION
+    LINK_TYPE_DISTRIBUTION,
+    LINK_CATEGORIES,
+    SITEMAP_MAX_URLS,
+    SITEMAP_TIMEOUT,
+    MAX_PAGES_TO_CRAWL,
+    CRAWL_TIMEOUT
 )
 
 # --- Realistic Domain Name Generation ---
@@ -63,6 +70,236 @@ def generate_realistic_domain():
     domain_name = pattern()
     tld = random.choice(DOMAIN_TLDS)
     return f"{domain_name}.{tld}".lower()
+
+
+# ============================================================================
+# SITEMAP & LINK TRAVERSAL FUNCTIONS
+# ============================================================================
+
+def parse_sitemap(sitemap_url: str):
+    """
+    Parses XML sitemap and extracts all URLs.
+    Supports standard XML sitemaps and sitemap indexes.
+    Returns: list of URLs found in sitemap
+    """
+    try:
+        headers = {'User-Agent': DEFAULT_USER_AGENT}
+        response = requests.get(sitemap_url, headers=headers, timeout=SITEMAP_TIMEOUT)
+        response.raise_for_status()
+        
+        # Parse XML
+        root = ET.fromstring(response.content)
+        
+        # Define namespace (sitemaps use XML namespaces)
+        namespace = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+        
+        urls = []
+        
+        # Check if this is a sitemap index (contains other sitemaps)
+        sitemap_entries = root.findall('ns:sitemap', namespace)
+        if sitemap_entries:
+            # This is a sitemap index - recursively parse each sitemap
+            for sitemap in sitemap_entries:
+                sitemap_loc = sitemap.find('ns:loc', namespace)
+                if sitemap_loc is not None and sitemap_loc.text:
+                    try:
+                        nested_urls = parse_sitemap(sitemap_loc.text)
+                        urls.extend(nested_urls)
+                        if len(urls) >= SITEMAP_MAX_URLS:
+                            break
+                    except:
+                        pass
+        else:
+            # This is a regular sitemap with URL entries
+            url_entries = root.findall('ns:url', namespace)
+            for url_entry in url_entries:
+                loc = url_entry.find('ns:loc', namespace)
+                if loc is not None and loc.text:
+                    urls.append(loc.text)
+                if len(urls) >= SITEMAP_MAX_URLS:
+                    break
+        
+        return urls[:SITEMAP_MAX_URLS]
+    
+    except Exception as e:
+        return {"error": f"Failed to parse sitemap: {str(e)}"}
+
+
+def categorize_link(href: str, anchor_text: str, page_domain: str):
+    """
+    Categorizes a link based on its URL and anchor text.
+    Returns: (category, confidence)
+    """
+    href_lower = href.lower()
+    anchor_lower = anchor_text.lower()
+    
+    # Check if external link
+    link_domain = urlparse(href).netloc.replace('www.', '')
+    is_external = link_domain and link_domain != page_domain
+    
+    if is_external:
+        return ('external', 1.0)
+    
+    # Categorize internal links
+    for category, config in LINK_CATEGORIES.items():
+        if category == 'external':
+            continue
+        
+        for keyword in config['keywords']:
+            if keyword in href_lower or keyword in anchor_lower:
+                return (category, 0.9)
+    
+    # Default to business category for internal links
+    return ('business', 0.5)
+
+
+def get_page_links_by_category(url: str):
+    """
+    Extracts all links from a page and categorizes them.
+    Returns: dictionary of links organized by category
+    """
+    try:
+        headers = {'User-Agent': DEFAULT_USER_AGENT}
+        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        page_domain = urlparse(url).netloc.replace('www.', '')
+        
+        # Initialize category structure
+        categorized_links = {
+            category: {
+                'description': config['description'],
+                'links': [],
+                'count': 0
+            }
+            for category, config in LINK_CATEGORIES.items()
+        }
+        
+        # Extract and categorize all links
+        for link in soup.find_all('a', href=True):
+            href = link.get('href', '').strip()
+            anchor_text = link.get_text(strip=True)
+            
+            # Skip empty hrefs and javascript
+            if not href or href.startswith('javascript:') or href.startswith('mailto:'):
+                continue
+            
+            # Convert relative URLs to absolute
+            if href.startswith('/'):
+                absolute_url = urljoin(url, href)
+            elif not href.startswith('http'):
+                absolute_url = urljoin(url, href)
+            else:
+                absolute_url = href
+            
+            # Get link attributes
+            rel = link.get('rel', [])
+            is_nofollow = 'nofollow' in rel
+            is_sponsored = 'sponsored' in rel
+            
+            # Categorize the link
+            category, confidence = categorize_link(href, anchor_text, page_domain)
+            
+            link_data = {
+                'url': absolute_url,
+                'anchor_text': anchor_text if anchor_text else '[No text]',
+                'is_nofollow': is_nofollow,
+                'is_sponsored': is_sponsored,
+                'confidence': confidence
+            }
+            
+            categorized_links[category]['links'].append(link_data)
+            categorized_links[category]['count'] += 1
+        
+        return {
+            'page_url': url,
+            'page_domain': page_domain,
+            'total_links': sum(cat['count'] for cat in categorized_links.values()),
+            'categories': categorized_links
+        }
+    
+    except Exception as e:
+        return {
+            'error': str(e),
+            'page_url': url,
+            'message': f'Failed to extract categorized links: {str(e)}'
+        }
+
+
+def crawl_sitemap_pages(sitemap_url: str, max_pages: int = None):
+    """
+    Crawls pages from a sitemap and extracts links from each page.
+    Returns: comprehensive link analysis for all pages
+    """
+    if max_pages is None:
+        max_pages = MAX_PAGES_TO_CRAWL
+    
+    try:
+        # Parse sitemap to get URLs
+        urls = parse_sitemap(sitemap_url)
+        
+        if isinstance(urls, dict) and 'error' in urls:
+            return urls
+        
+        # Limit number of pages to crawl
+        urls_to_crawl = urls[:max_pages]
+        
+        # Crawl each page and extract links
+        all_pages_links = []
+        category_summary = {
+            category: {
+                'description': config['description'],
+                'total_count': 0,
+                'pages_with_this_category': 0
+            }
+            for category, config in LINK_CATEGORIES.items()
+        }
+        
+        for idx, page_url in enumerate(urls_to_crawl, 1):
+            try:
+                page_data = get_page_links_by_category(page_url)
+                
+                if 'error' not in page_data:
+                    all_pages_links.append({
+                        'page_number': idx,
+                        'page_url': page_url,
+                        'total_links': page_data['total_links'],
+                        'categories': page_data['categories']
+                    })
+                    
+                    # Update category summary
+                    for category, cat_data in page_data['categories'].items():
+                        if cat_data['count'] > 0:
+                            category_summary[category]['total_count'] += cat_data['count']
+                            category_summary[category]['pages_with_this_category'] += 1
+                
+                # Small delay to avoid overwhelming server
+                time.sleep(0.5)
+            
+            except Exception as e:
+                # Continue with next page on error
+                all_pages_links.append({
+                    'page_number': idx,
+                    'page_url': page_url,
+                    'error': str(e)
+                })
+        
+        return {
+            'sitemap_url': sitemap_url,
+            'total_pages_crawled': len(all_pages_links),
+            'total_pages_in_sitemap': len(urls),
+            'category_summary': category_summary,
+            'pages': all_pages_links
+        }
+    
+    except Exception as e:
+        return {
+            'error': str(e),
+            'sitemap_url': sitemap_url,
+            'message': f'Failed to crawl sitemap: {str(e)}'
+        }
+
 
 
 def generate_realistic_websites(count: int, exclude_suspicious: bool = False):
