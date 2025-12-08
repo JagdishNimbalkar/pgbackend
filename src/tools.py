@@ -5,48 +5,63 @@ import re
 import time
 from duckduckgo_search import DDGS
 import random
+from data_config import (
+    STOPWORDS_SET,
+    DOMAIN_ADJECTIVES,
+    DOMAIN_NOUNS,
+    DOMAIN_TLDS,
+    SPAM_INDICATORS,
+    SUSPICIOUS_TLDS,
+    GENERIC_ANCHORS,
+    QUALITY_ANCHOR_KEYWORDS,
+    MIN_KEYWORD_LENGTH,
+    TOP_KEYWORDS_COUNT,
+    LINK_VELOCITY_MIN_GROWTH,
+    LINK_VELOCITY_MAX_GROWTH,
+    AUTHORITY_WEIGHTS,
+    ACCELERATION_ACCELERATING,
+    ACCELERATION_GROWING,
+    ACCELERATION_SLOWING,
+    ACCELERATION_DECLINING,
+    VELOCITY_STALLED_THRESHOLD,
+    VELOCITY_EXCELLENT_RATIO,
+    VELOCITY_GOOD_RATIO,
+    DOMAIN_AUTHORITY_HIGH,
+    DOMAIN_AUTHORITY_MEDIUM_MIN,
+    DOMAIN_AUTHORITY_MEDIUM_MAX,
+    DOMAIN_AUTHORITY_LOW_MAX,
+    TOXICITY_WEIGHTS,
+    TOXICITY_HIGH,
+    TOXICITY_MEDIUM,
+    DEFAULT_USER_AGENT,
+    REQUEST_TIMEOUT,
+    HEAD_REQUEST_TIMEOUT,
+    MAX_EXTERNAL_DOMAINS,
+    LINK_TYPE_DISTRIBUTION
+)
 
 # --- Realistic Domain Name Generation ---
 def generate_realistic_domain():
     """
     Generates realistic, plausible domain names that look like real websites.
+    Uses DOMAIN_ADJECTIVES, DOMAIN_NOUNS, and DOMAIN_TLDS from data_config.py
     """
-    # Real-looking domain patterns
-    adjectives = [
-        'digital', 'smart', 'pro', 'best', 'top', 'perfect', 'ultimate', 'premium',
-        'advanced', 'elite', 'expert', 'professional', 'trusted', 'leading', 'modern',
-        'innovative', 'optimal', 'superior', 'dynamic', 'strategic'
-    ]
-    
-    nouns = [
-        'solutions', 'services', 'hub', 'central', 'studio', 'agency', 'tech', 'labs',
-        'media', 'group', 'marketing', 'consulting', 'insights', 'analytics', 'strategy',
-        'content', 'web', 'digital', 'online', 'resources', 'tools', 'platform', 'network',
-        'exchange', 'marketplace', 'directory', 'portal', 'center', 'syndicate'
-    ]
-    
-    # Real TLDs (some legitimate, some suspicious)
-    tlds = [
-        'com', 'net', 'org', 'co', 'io', 'info', 'biz', 'blog', 'site', 'online',
-        'tech', 'website', 'space', 'work', 'news', 'guru'
-    ]
-    
-    # Generate domain - use various patterns
+    # Generate domain - use various patterns from config
     pattern = random.choice([
         # Simple adjective + noun
-        lambda: f"{random.choice(adjectives)}{random.choice(nouns)}",
+        lambda: f"{random.choice(DOMAIN_ADJECTIVES)}{random.choice(DOMAIN_NOUNS)}",
         # Adjective-noun hyphenated
-        lambda: f"{random.choice(adjectives)}-{random.choice(nouns)}",
+        lambda: f"{random.choice(DOMAIN_ADJECTIVES)}-{random.choice(DOMAIN_NOUNS)}",
         # Double word
-        lambda: f"{random.choice(nouns)}{random.choice(nouns)}",
+        lambda: f"{random.choice(DOMAIN_NOUNS)}{random.choice(DOMAIN_NOUNS)}",
         # Number inclusion (looks real)
-        lambda: f"{random.choice(adjectives)}{random.choice(nouns)}{random.randint(1, 999)}",
+        lambda: f"{random.choice(DOMAIN_ADJECTIVES)}{random.choice(DOMAIN_NOUNS)}{random.randint(1, 999)}",
         # Single word variations
-        lambda: random.choice(nouns),
+        lambda: random.choice(DOMAIN_NOUNS),
     ])
     
     domain_name = pattern()
-    tld = random.choice(tlds)
+    tld = random.choice(DOMAIN_TLDS)
     return f"{domain_name}.{tld}".lower()
 
 
@@ -61,68 +76,56 @@ def generate_realistic_websites(count: int, exclude_suspicious: bool = False):
 # --- Toxic Link Detection Utility ---
 def detect_toxic_characteristics(domain: str, anchor_text: str, page_type: str, domain_authority: int):
     """
-    Analyzes a backlink for toxic/spammy characteristics.
-    Returns: (is_toxic: bool, severity: str, reason: str)
+    Analyzes a backlink for toxic/spammy characteristics using data_config thresholds.
+    Returns: (is_toxic: bool, severity: str, reason: str, score: int)
     """
     toxicity_score = 0
     reasons = []
     
     # Check 1: Very low domain authority (DA < 10)
     if domain_authority < 10:
-        toxicity_score += 40
+        toxicity_score += TOXICITY_WEIGHTS['very_low_da']
         reasons.append("Very low domain authority (likely low-quality site)")
     elif domain_authority < 20:
-        toxicity_score += 20
+        toxicity_score += TOXICITY_WEIGHTS['low_da']
         reasons.append("Low domain authority")
     
     # Check 2: Suspicious domain patterns
-    spam_indicators = [
-        "spam", "casino", "poker", "viagra", "pharma", "loan", "debt",
-        "crypto", "forex", "trading", "xxx", "adult", "porn"
-    ]
     domain_lower = domain.lower()
-    if any(indicator in domain_lower for indicator in spam_indicators):
-        toxicity_score += 50
+    if any(indicator in domain_lower for indicator in SPAM_INDICATORS):
+        toxicity_score += TOXICITY_WEIGHTS['suspicious_domain']
         reasons.append("Suspicious domain name pattern detected")
     
     # Check 3: Suspicious TLD patterns
-    suspicious_tlds = [".biz", ".info", ".tk", ".ml", ".ga"]
-    if any(domain_lower.endswith(tld) for tld in suspicious_tlds):
-        toxicity_score += 15
+    if any(domain_lower.endswith(tld) for tld in SUSPICIOUS_TLDS):
+        toxicity_score += TOXICITY_WEIGHTS['suspicious_tld']
         reasons.append("Suspicious TLD (.biz, .info, etc.)")
     
     # Check 4: Over-optimization of anchor text (keyword stuffing)
-    keyword_stuffing_patterns = [
-        r"(\w+\s+){3,}",  # More than 3 words
-        r"viagra|cialis|casino",  # Common spam keywords
-    ]
     if anchor_text and len(anchor_text.split()) > 4:
-        toxicity_score += 20
+        toxicity_score += TOXICITY_WEIGHTS['keyword_stuffing']
         reasons.append("Unusually long anchor text (potential keyword stuffing)")
     
-    for pattern in keyword_stuffing_patterns:
-        if anchor_text and re.search(pattern, anchor_text.lower()):
-            toxicity_score += 25
-            reasons.append("Spam keyword detected in anchor text")
-            break
+    if anchor_text and any(indicator in anchor_text.lower() for indicator in SPAM_INDICATORS):
+        toxicity_score += TOXICITY_WEIGHTS['spam_keywords']
+        reasons.append("Spam keyword detected in anchor text")
     
     # Check 5: Page type analysis
     if page_type in ["comment", "forum", "blog_spam"]:
-        toxicity_score += 30
+        toxicity_score += TOXICITY_WEIGHTS['risky_page_type']
         reasons.append(f"Risky page type: {page_type} (often associated with spam)")
     
     # Check 6: Generic/manipulative anchor text
-    generic_anchors = ["click here", "read more", "check this out", "here", "link"]
-    if anchor_text and anchor_text.lower() in generic_anchors:
-        toxicity_score += 15
+    if anchor_text and anchor_text.lower() in GENERIC_ANCHORS:
+        toxicity_score += TOXICITY_WEIGHTS['generic_anchor']
         reasons.append("Generic anchor text (natural links typically have descriptive anchors)")
     
-    # Determine severity based on score
-    if toxicity_score >= 70:
+    # Determine severity based on score using thresholds from config
+    if toxicity_score >= TOXICITY_HIGH:
         severity = "high"
-    elif toxicity_score >= 40:
+    elif toxicity_score >= TOXICITY_MEDIUM:
         severity = "medium"
-    elif toxicity_score >= 20:
+    elif toxicity_score >= TOXICITY_WEIGHTS['generic_anchor']:
         severity = "low"
     else:
         severity = None
@@ -132,14 +135,163 @@ def detect_toxic_characteristics(domain: str, anchor_text: str, page_type: str, 
     
     return is_toxic, severity, reason, toxicity_score
 
+# --- 0. Backlink Extractor (Outbound Links Analysis) ---
+def extract_page_backlinks(url: str):
+    """
+    Extracts all outbound links from a given page and analyzes their characteristics.
+    Returns detailed information about each link found on the page.
+    """
+    try:
+        headers = {'User-Agent': DEFAULT_USER_AGENT}
+        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Extract all links
+        backlinks = []
+        link_stats = {
+            "total_links": 0,
+            "internal_links": 0,
+            "external_links": 0,
+            "nofollow_links": 0,
+            "dofollow_links": 0,
+            "links_with_anchor": 0,
+            "links_without_anchor": 0
+        }
+        
+        # Parse the page domain to identify internal vs external links
+        from urllib.parse import urlparse
+        page_domain = urlparse(url).netloc.replace('www.', '')
+        
+        for link in soup.find_all('a', href=True):
+            href = link.get('href', '').strip()
+            
+            # Skip empty hrefs, anchors, and javascript
+            if not href or href.startswith('javascript:') or href.startswith('mailto:'):
+                continue
+            
+            # Get anchor text
+            anchor_text = link.get_text(strip=True)
+            
+            # Check if link has rel attribute (nofollow, sponsored, ugc)
+            rel = link.get('rel', [])
+            is_nofollow = 'nofollow' in rel
+            is_sponsored = 'sponsored' in rel
+            is_ugc = 'ugc' in rel
+            
+            # Determine if internal or external
+            if href.startswith('/'):
+                link_type = "internal"
+                target_domain = page_domain
+                link_stats["internal_links"] += 1
+            elif href.startswith('http'):
+                link_type = "external"
+                target_domain = urlparse(href).netloc.replace('www.', '')
+                link_stats["external_links"] += 1
+            else:
+                # Relative URLs
+                link_type = "internal"
+                target_domain = page_domain
+                link_stats["internal_links"] += 1
+            
+            # Count link follow status
+            if is_nofollow:
+                link_stats["nofollow_links"] += 1
+            else:
+                link_stats["dofollow_links"] += 1
+            
+            # Count anchor text presence
+            if anchor_text:
+                link_stats["links_with_anchor"] += 1
+            else:
+                link_stats["links_without_anchor"] += 1
+            
+            link_stats["total_links"] += 1
+            
+            backlinks.append({
+                "href": href,
+                "anchor_text": anchor_text if anchor_text else "[No anchor text]",
+                "link_type": link_type,
+                "target_domain": target_domain,
+                "is_nofollow": is_nofollow,
+                "is_sponsored": is_sponsored,
+                "is_ugc": is_ugc,
+                "follow_status": "nofollow" if is_nofollow else ("sponsored" if is_sponsored else ("ugc" if is_ugc else "dofollow")),
+                "has_anchor_text": bool(anchor_text)
+            })
+        
+        # Calculate percentages
+        total = link_stats["total_links"]
+        if total > 0:
+            link_stats["internal_percent"] = round((link_stats["internal_links"] / total) * 100, 1)
+            link_stats["external_percent"] = round((link_stats["external_links"] / total) * 100, 1)
+            link_stats["dofollow_percent"] = round((link_stats["dofollow_links"] / total) * 100, 1)
+            link_stats["nofollow_percent"] = round((link_stats["nofollow_links"] / total) * 100, 1)
+        
+        # Extract external domain references for potential backlink sources
+        external_domains = {}
+        for link in backlinks:
+            if link["link_type"] == "external":
+                domain = link["target_domain"]
+                if domain not in external_domains:
+                    external_domains[domain] = {
+                        "count": 0,
+                        "links": []
+                    }
+                external_domains[domain]["count"] += 1
+                external_domains[domain]["links"].append({
+                    "href": link["href"],
+                    "anchor_text": link["anchor_text"],
+                    "follow_status": link["follow_status"]
+                })
+        
+        # Sort external domains by frequency (limit to MAX_EXTERNAL_DOMAINS)
+        top_external_domains = sorted(
+            external_domains.items(),
+            key=lambda x: x[1]["count"],
+            reverse=True
+        )[:MAX_EXTERNAL_DOMAINS]
+        
+        return {
+            "page_url": url,
+            "page_domain": page_domain,
+            "link_statistics": link_stats,
+            "total_backlinks_found": len(backlinks),
+            "all_links": backlinks,
+            "top_external_domains": [
+                {
+                    "domain": domain,
+                    "link_count": data["count"],
+                    "links": data["links"]
+                }
+                for domain, data in top_external_domains
+            ],
+            "link_analysis": {
+                "internal_to_external_ratio": f"{link_stats['internal_links']}:{link_stats['external_links']}",
+                "dofollow_quality": f"{link_stats['dofollow_percent']}% of links pass link equity",
+                "anchor_text_coverage": f"{link_stats['links_with_anchor']}/{link_stats['total_links']} links have anchor text",
+                "has_nofollow_links": link_stats["nofollow_links"] > 0,
+                "has_sponsored_links": any(l["is_sponsored"] for l in backlinks),
+                "has_ugc_links": any(l["is_ugc"] for l in backlinks)
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "page_url": url,
+            "message": f"Failed to extract backlinks: {str(e)}"
+        }
+
 # --- 1. Technical Scraper ---
 def extract_meta_tags(url: str):
     """
     Scrapes a URL to extract SEO-relevant meta tags (Title, Description, H1-H3).
     """
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(url, headers=headers, timeout=10)
+        headers = {'User-Agent': DEFAULT_USER_AGENT}
+        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -163,14 +315,18 @@ def extract_meta_tags(url: str):
         return {"error": str(e)}
 
 # --- 2. Broken Link Checker (Lightweight) ---
-def check_broken_links(url: str, limit: int = 10):
+def check_broken_links(url: str, limit: int = None):
     """
     Finds links on the page and checks their status code. 
-    Limited to 'limit' links to prevent long wait times during demos.
+    Limited to BROKEN_LINK_CHECKER_LIMIT to prevent long wait times during demos.
     """
+    from data_config import BROKEN_LINK_CHECKER_LIMIT
+    if limit is None:
+        limit = BROKEN_LINK_CHECKER_LIMIT
+    
     try:
-        headers = {'User-Agent': 'SEO-Agent/1.0'}
-        response = requests.get(url, headers=headers, timeout=10)
+        headers = {'User-Agent': DEFAULT_USER_AGENT}
+        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         soup = BeautifulSoup(response.content, 'html.parser')
         
         links = [a.get('href') for a in soup.find_all('a', href=True) if a.get('href').startswith('http')]
@@ -179,7 +335,7 @@ def check_broken_links(url: str, limit: int = 10):
         results = []
         for link in unique_links:
             try:
-                r = requests.head(link, headers=headers, timeout=5)
+                r = requests.head(link, headers=headers, timeout=HEAD_REQUEST_TIMEOUT)
                 status = "Broken" if r.status_code >= 400 else "OK"
                 results.append({"link": link, "status": status, "code": r.status_code})
             except:
@@ -195,25 +351,30 @@ def get_page_speed(url: str):
     Estimates page load performance based on server response time and content size.
     Note: For production, integrate Google PageSpeed Insights API.
     """
+    from data_config import SPEED_GOOD_THRESHOLD, SPEED_WARNING_THRESHOLD, PAGE_SIZE_WARNING
+    
     try:
         start_time = time.time()
-        headers = {'User-Agent': 'SEO-Agent/1.0'}
-        response = requests.get(url, headers=headers, timeout=10)
+        headers = {'User-Agent': DEFAULT_USER_AGENT}
+        response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         end_time = time.time()
         
-        duration = round((end_time - start_time) * 1000, 2) # ms
+        duration = round((end_time - start_time) * 1000, 2)  # ms
         size_kb = round(len(response.content) / 1024, 2)
         
         score = 100
-        if duration > 1000: score -= 10
-        if duration > 2000: score -= 20
-        if size_kb > 2000: score -= 10
+        if duration > SPEED_WARNING_THRESHOLD:
+            score -= 20
+        elif duration > SPEED_GOOD_THRESHOLD:
+            score -= 10
+        if size_kb > PAGE_SIZE_WARNING:
+            score -= 10
         
         return {
             "load_time_ms": duration,
             "page_size_kb": size_kb,
             "estimated_score": max(0, score),
-            "status": "Good" if duration < 800 else "Needs Improvement"
+            "status": "Good" if duration < SPEED_GOOD_THRESHOLD else "Needs Improvement"
         }
     except Exception as e:
         return {"error": str(e)}
@@ -222,12 +383,13 @@ def get_page_speed(url: str):
 def analyze_keyword_density(text: str = "", url: str = None):
     """
     Analyzes keyword frequency on a page, filtering out common stopwords and non-meaningful terms.
+    Uses STOPWORDS_SET from data_config.py for comprehensive stopword filtering.
     """
     content = text
     if url:
         try:
-            headers = {'User-Agent': 'SEO-Agent/1.0'}
-            response = requests.get(url, headers=headers, timeout=10)
+            headers = {'User-Agent': DEFAULT_USER_AGENT}
+            response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
             soup = BeautifulSoup(response.content, 'html.parser')
             # Remove scripts and styles
             for script in soup(["script", "style"]):
@@ -235,49 +397,19 @@ def analyze_keyword_density(text: str = "", url: str = None):
             content = soup.get_text()
         except Exception as e:
             return {"error": str(e)}
-
-    # Comprehensive English stopwords list - filters common words that don't provide keyword insights
-    stop_words = set([
-        # Articles & Determiners
-        'the', 'a', 'an', 'this', 'that', 'these', 'those', 'some', 'any', 'all', 'each', 'every', 'other',
-        # Pronouns
-        'i', 'me', 'my', 'mine', 'myself', 'we', 'us', 'our', 'ours', 'ourselves', 'you', 'your', 'yours', 'yourself', 'yourselves',
-        'he', 'him', 'his', 'himself', 'she', 'her', 'hers', 'herself', 'it', 'its', 'itself', 'they', 'them', 'their', 'theirs', 'themselves',
-        'who', 'whom', 'whose', 'what', 'which', 'whoever', 'whomever', 'whatever', 'whichever',
-        # Auxiliary verbs & common verbs
-        'is', 'am', 'are', 'was', 'were', 'be', 'being', 'been', 'do', 'does', 'did', 'doing', 'have', 'has', 'had', 'having',
-        'can', 'could', 'will', 'would', 'shall', 'should', 'may', 'might', 'must', 'ought', 'to', 'should',
-        'get', 'got', 'getting', 'make', 'made', 'making', 'go', 'goes', 'going', 'know', 'knew', 'knowing',
-        # Common prepositions
-        'in', 'on', 'at', 'by', 'for', 'from', 'to', 'of', 'with', 'without', 'through', 'during', 'before', 'after',
-        'above', 'below', 'between', 'among', 'into', 'out', 'up', 'down', 'over', 'under', 'near', 'about',
-        # Conjunctions & connectors
-        'and', 'or', 'but', 'nor', 'yet', 'so', 'because', 'as', 'if', 'unless', 'when', 'where', 'while', 'until',
-        # Common adverbs & modifiers
-        'not', 'no', 'yes', 'very', 'just', 'only', 'more', 'most', 'less', 'least', 'also', 'too', 'so', 'then',
-        'now', 'here', 'there', 'how', 'why', 'when', 'where', 'almost', 'already', 'always', 'never', 'ever', 'still',
-        # Common nouns & filler words
-        'one', 'two', 'first', 'second', 'thing', 'way', 'time', 'day', 'year', 'place', 'people', 'man', 'woman', 'person',
-        'said', 'say', 'says', 'told', 'tell', 'tells', 'being', 'having', 'getting', 'making', 'come', 'came', 'coming',
-        # Numbers and common fillers
-        'etc', 'amp', 'nbsp', 'quot', 'apos', 'use', 'used', 'using', 'new', 'old', 'good', 'bad', 'best', 'worst',
-        'same', 'different', 'like', 'unlike', 'such', 'such', 'even', 'own', 'many', 'several', 'few', 'much',
-        # Single letters and common abbreviations
-        'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-    ])
     
     # Tokenization: extract words
     words = re.findall(r'\w+', content.lower())
     
-    # Filter: remove stopwords and short words (less than 3 chars)
+    # Filter: remove stopwords and short words (less than MIN_KEYWORD_LENGTH chars)
     # Only keep meaningful content words
     filtered_words = [
         w for w in words 
-        if w not in stop_words and len(w) >= 3 and not w.isdigit()
+        if w not in STOPWORDS_SET and len(w) >= MIN_KEYWORD_LENGTH and not w.isdigit()
     ]
     
     counter = Counter(filtered_words)
-    top_keywords = counter.most_common(10)
+    top_keywords = counter.most_common(TOP_KEYWORDS_COUNT)
     
     return {
         "top_keywords": [{"word": w, "count": c} for w, c in top_keywords],
@@ -302,17 +434,21 @@ def calculate_intelligent_link_velocity(total_backlinks: int, high_auth_count: i
     """
     Calculates intelligent link velocity metrics using authority-weighted analysis.
     Returns realistic velocity data based on link distribution and quality.
+    Uses AUTHORITY_WEIGHTS and thresholds from data_config.py
     """
     import random
     from datetime import datetime, timedelta
     
     # Base velocity calculation using weighted authority distribution
-    # High-authority links are weighted 3x, medium 1.5x, low 1x
-    weighted_total = (high_auth_count * 3) + (medium_auth_count * 1.5) + low_auth_count
+    weighted_total = (
+        (high_auth_count * AUTHORITY_WEIGHTS['high']) + 
+        (medium_auth_count * AUTHORITY_WEIGHTS['medium']) + 
+        (low_auth_count * AUTHORITY_WEIGHTS['low'])
+    )
     
     # Calculate realistic 30-day and 90-day new links
-    # Assuming sustainable growth rate of 5-15% per month
-    monthly_growth_rate = random.uniform(0.05, 0.15)
+    # Assuming sustainable growth rate from LINK_VELOCITY_MIN_GROWTH to LINK_VELOCITY_MAX_GROWTH per month
+    monthly_growth_rate = random.uniform(LINK_VELOCITY_MIN_GROWTH, LINK_VELOCITY_MAX_GROWTH)
     new_links_30_days = int(weighted_total * monthly_growth_rate)
     new_links_90_days = int(weighted_total * (monthly_growth_rate * 2.5))
     
@@ -325,17 +461,17 @@ def calculate_intelligent_link_velocity(total_backlinks: int, high_auth_count: i
     previous_30_days = max(1, int(new_links_30_days * random.uniform(0.6, 1.2)))
     acceleration = ((new_links_30_days - previous_30_days) / previous_30_days) * 100 if previous_30_days > 0 else 0
     
-    # Determine trend based on acceleration and growth pattern
-    if acceleration > 20:
+    # Determine trend based on acceleration and growth pattern using thresholds from config
+    if acceleration > ACCELERATION_ACCELERATING:
         trend = "accelerating"
         trend_assessment = "Strong growth momentum detected"
-    elif acceleration > 5:
+    elif acceleration > ACCELERATION_GROWING:
         trend = "growing"
         trend_assessment = "Steady link acquisition underway"
-    elif acceleration < -20:
+    elif acceleration < ACCELERATION_DECLINING:
         trend = "declining"
         trend_assessment = "Significant drop in link acquisition"
-    elif acceleration < -5:
+    elif acceleration < ACCELERATION_SLOWING:
         trend = "slowing"
         trend_assessment = "Link growth rate declining"
     else:
@@ -354,12 +490,12 @@ def calculate_intelligent_link_velocity(total_backlinks: int, high_auth_count: i
     if acceleration > 50:
         velocity_warnings.append("Unusually rapid growth detected - monitor for quality degradation")
     
-    if new_links_30_days < 1 and total_backlinks > 20:
+    if new_links_30_days < VELOCITY_STALLED_THRESHOLD and total_backlinks > 20:
         velocity_warnings.append("No new links in last 30 days - acquisition has stalled")
         velocity_score = 20
-    elif new_links_30_days >= total_backlinks // 5:
+    elif new_links_30_days >= total_backlinks // VELOCITY_EXCELLENT_RATIO:
         velocity_score = 90  # Excellent growth rate
-    elif new_links_30_days >= total_backlinks // 10:
+    elif new_links_30_days >= total_backlinks // VELOCITY_GOOD_RATIO:
         velocity_score = 75  # Good growth rate
     else:
         velocity_score = 50  # Moderate growth rate
@@ -444,8 +580,8 @@ def analyze_backlinks(url: str):
         for i, domain_name in enumerate(high_auth_domains):
             backlinks_data["link_profile"]["high_authority_links"].append({
                 "source_domain": domain_name,
-                "domain_authority": random.randint(65, 95),
-                "anchor_text": random.choice(["best seo tools", "digital marketing", "seo guide", "industry leader"]),
+                "domain_authority": random.randint(DOMAIN_AUTHORITY_HIGH, 95),
+                "anchor_text": random.choice(QUALITY_ANCHOR_KEYWORDS),
                 "link_type": "dofollow",
                 "page_type": random.choice(["homepage", "resource", "article"])
             })
@@ -454,8 +590,8 @@ def analyze_backlinks(url: str):
         for i, domain_name in enumerate(medium_auth_domains):
             backlinks_data["link_profile"]["medium_authority_links"].append({
                 "source_domain": domain_name,
-                "domain_authority": random.randint(30, 60),
-                "anchor_text": random.choice(["seo services", "marketing tools", "analytics platform", "optimization guide"]),
+                "domain_authority": random.randint(DOMAIN_AUTHORITY_MEDIUM_MIN, DOMAIN_AUTHORITY_MEDIUM_MAX),
+                "anchor_text": random.choice(QUALITY_ANCHOR_KEYWORDS[:8]),
                 "link_type": random.choice(["dofollow", "nofollow"]),
                 "page_type": random.choice(["article", "directory", "resource"])
             })
@@ -464,8 +600,8 @@ def analyze_backlinks(url: str):
         for i, domain_name in enumerate(low_auth_domains):
             backlinks_data["link_profile"]["low_authority_links"].append({
                 "source_domain": domain_name,
-                "domain_authority": random.randint(5, 29),
-                "anchor_text": random.choice(["click here", "read more", "check this out", "learn more"]),
+                "domain_authority": random.randint(1, DOMAIN_AUTHORITY_LOW_MAX),
+                "anchor_text": random.choice(GENERIC_ANCHORS),
                 "link_type": random.choice(["dofollow", "nofollow", "sponsored"]),
                 "page_type": random.choice(["blog", "forum", "comment"])
             })
@@ -485,11 +621,11 @@ def analyze_backlinks(url: str):
             "generic_anchors": sum(1 for text in anchor_texts if text in ["click here", "read more", "check this out", "learn more"])
         }
         
-        # Link Type Analysis
-        backlinks_data["link_types"]["homepage"] = int(referring_domains * 0.3)
-        backlinks_data["link_types"]["inner_pages"] = int(referring_domains * 0.5)
-        backlinks_data["link_types"]["resource_links"] = int(referring_domains * 0.15)
-        backlinks_data["link_types"]["blog_links"] = int(referring_domains * 0.05)
+        # Link Type Analysis using LINK_TYPE_DISTRIBUTION from config
+        backlinks_data["link_types"]["homepage"] = int(referring_domains * LINK_TYPE_DISTRIBUTION['homepage'])
+        backlinks_data["link_types"]["inner_pages"] = int(referring_domains * LINK_TYPE_DISTRIBUTION['inner_pages'])
+        backlinks_data["link_types"]["resource_links"] = int(referring_domains * LINK_TYPE_DISTRIBUTION['resource_links'])
+        backlinks_data["link_types"]["blog_links"] = int(referring_domains * LINK_TYPE_DISTRIBUTION['blog_links'])
         
         # Calculate link quality score (0-100)
         quality_score = 50  # Base score
@@ -528,6 +664,18 @@ def analyze_backlinks(url: str):
         
         # METHOD 1: Extract competitor domains from backlink sources
         # Competitors are often linked from the same authority sources as you
+        from data_config import (
+            COMPETITORS_TO_ANALYZE,
+            COMPETITOR_CONFIDENCE_HIGH,
+            COMPETITOR_CONFIDENCE_MEDIUM,
+            COMPETITOR_CONFIDENCE_LOW,
+            AUTHORITY_GAP_HIGH_IMPACT,
+            AUTHORITY_GAP_MEDIUM_IMPACT,
+            DOMAIN_DIVERSITY_HIGH_IMPACT,
+            DOMAIN_DIVERSITY_MEDIUM_IMPACT,
+            DOFOLLOW_QUALITY_GAP_IMPACT
+        )
+        
         high_auth_sources = [link["source_domain"] for link in backlinks_data["link_profile"]["high_authority_links"]]
         
         # Simulate that high-authority domains link to 2-3 competitors as well
@@ -550,25 +698,25 @@ def analyze_backlinks(url: str):
                         "domain": comp_domain,
                         "detected_from": source,
                         "authority_level": "High-authority",
-                        "detection_confidence": round(random.uniform(0.7, 0.95), 2),
+                        "detection_confidence": round(random.uniform(COMPETITOR_CONFIDENCE_MEDIUM, COMPETITOR_CONFIDENCE_HIGH), 2),
                         "is_simulated": True
                     })
         
-        # If we found fewer than 3 competitors, add default ones
-        if len(detected_competitors) < 3:
+        # If we found fewer than COMPETITORS_TO_ANALYZE competitors, add default ones
+        if len(detected_competitors) < COMPETITORS_TO_ANALYZE:
             default_competitors = [
-                {"domain": "[DEMO] competitor1.com", "detected_from": "industry_search", "authority_level": "Industry leader", "detection_confidence": 0.88, "is_simulated": True},
-                {"domain": "[DEMO] competitor2.com", "detected_from": "niche_directory", "authority_level": "Established player", "detection_confidence": 0.82, "is_simulated": True},
-                {"domain": "[DEMO] competitor3.com", "detected_from": "resource_site", "authority_level": "Growing competitor", "detection_confidence": 0.75, "is_simulated": True},
+                {"domain": "[DEMO] competitor1.com", "detected_from": "industry_search", "authority_level": "Industry leader", "detection_confidence": COMPETITOR_CONFIDENCE_HIGH, "is_simulated": True},
+                {"domain": "[DEMO] competitor2.com", "detected_from": "niche_directory", "authority_level": "Established player", "detection_confidence": COMPETITOR_CONFIDENCE_MEDIUM, "is_simulated": True},
+                {"domain": "[DEMO] competitor3.com", "detected_from": "resource_site", "authority_level": "Growing competitor", "detection_confidence": COMPETITOR_CONFIDENCE_LOW, "is_simulated": True},
             ]
-            detected_competitors.extend(default_competitors[:3 - len(detected_competitors)])
+            detected_competitors.extend(default_competitors[:COMPETITORS_TO_ANALYZE - len(detected_competitors)])
         
         backlinks_data["competitor_analysis"]["competitors_detected"] = detected_competitors
         
         # METHOD 2: Build competitor profiles by analyzing common backlink patterns
         backlinks_data["opportunities"] = []
         
-        for competitor in detected_competitors[:3]:  # Analyze top 3 competitors
+        for competitor in detected_competitors[:COMPETITORS_TO_ANALYZE]:  # Analyze top N competitors
             # Simulate realistic competitor backlink profiles relative to user's profile
             comp_total_backlinks = total_backlinks + random.randint(-100, 300)
             comp_referring_domains = referring_domains + random.randint(-30, 100)
@@ -577,7 +725,7 @@ def analyze_backlinks(url: str):
             comp_dofollow_links = int(comp_total_backlinks * (comp_dofollow_percent / 100))
             
             # Authority Gap Analysis
-            if comp_high_auth_links > high_auth_count + 5:
+            if comp_high_auth_links > high_auth_count + AUTHORITY_GAP_MEDIUM_IMPACT:
                 backlinks_data["opportunities"].append({
                     "type": "competitor_gap",
                     "is_simulated": True,
@@ -586,13 +734,13 @@ def analyze_backlinks(url: str):
                     "competitor": competitor["domain"],
                     "detection_confidence": competitor["detection_confidence"],
                     "gap_metric": f"{comp_high_auth_links} vs {high_auth_count} DA60+ links",
-                    "estimated_impact": "High" if comp_high_auth_links > high_auth_count + 15 else "Medium",
+                    "estimated_impact": "High" if comp_high_auth_links > high_auth_count + AUTHORITY_GAP_HIGH_IMPACT else "Medium",
                     "action": "Research their high-authority backlinks. Identify the top 10 sources and develop targeted outreach strategy.",
                     "potential_links": comp_high_auth_links - high_auth_count
                 })
             
             # Referring Domain Diversity Gap
-            if comp_referring_domains > referring_domains + 20:
+            if comp_referring_domains > referring_domains + DOMAIN_DIVERSITY_MEDIUM_IMPACT:
                 backlinks_data["opportunities"].append({
                     "type": "competitor_gap",
                     "is_simulated": True,
@@ -601,7 +749,7 @@ def analyze_backlinks(url: str):
                     "competitor": competitor["domain"],
                     "detection_confidence": competitor["detection_confidence"],
                     "gap_metric": f"{comp_referring_domains} vs {referring_domains} referring domains",
-                    "estimated_impact": "High" if comp_referring_domains > referring_domains + 50 else "Medium",
+                    "estimated_impact": "High" if comp_referring_domains > referring_domains + DOMAIN_DIVERSITY_HIGH_IMPACT else "Medium",
                     "action": "Analyze their link sources. Target niche directories, industry databases, and associations they're listed in.",
                     "potential_links": comp_referring_domains - referring_domains
                 })
@@ -610,7 +758,7 @@ def analyze_backlinks(url: str):
             comp_dofollow_ratio = (comp_dofollow_links / max(1, comp_total_backlinks) * 100) if comp_total_backlinks > 0 else 0
             user_dofollow_ratio = (backlinks_data["dofollow_links"] / total_backlinks * 100) if total_backlinks > 0 else 0
             
-            if comp_dofollow_ratio > user_dofollow_ratio + 5:
+            if comp_dofollow_ratio > user_dofollow_ratio + DOFOLLOW_QUALITY_GAP_IMPACT:
                 backlinks_data["opportunities"].append({
                     "type": "competitor_gap",
                     "is_simulated": True,

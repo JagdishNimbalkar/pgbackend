@@ -65,6 +65,11 @@ def tool_serp_check(request: KeywordRequest):
 def tool_keyword_density(request: UrlRequest):
     return tools.analyze_keyword_density(url=request.url)
 
+@app.post("/tools/page-backlinks")
+def tool_extract_backlinks(request: UrlRequest):
+    """Extract all outbound links (backlinks) from a given page"""
+    return tools.extract_page_backlinks(url=request.url)
+
 # --- 2. Orchestrated Agent Endpoint ---
 
 @app.post("/agent/audit")

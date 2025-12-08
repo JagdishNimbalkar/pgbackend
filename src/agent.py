@@ -1,7 +1,7 @@
 from typing import TypedDict, List, Dict, Any
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
-from tools import extract_meta_tags, get_page_speed, analyze_keyword_density, check_broken_links, analyze_backlinks
+from tools import extract_meta_tags, get_page_speed, analyze_keyword_density, check_broken_links, analyze_backlinks, extract_page_backlinks
 
 # 1. Define Agent State
 class AgentState(TypedDict):
