@@ -145,6 +145,8 @@ def analyze_backlinks(url: str):
         # Collect backlink data using multiple methods
         backlinks_data = {
             "domain": domain,
+            "data_source": "SIMULATED_DEMO_DATA",
+            "data_source_label": "⚠️ Demo/Simulated Data - Integration with Ahrefs, SEMrush, or Majestic API required for production",
             "total_backlinks": 0,
             "referring_domains": 0,
             "dofollow_links": 0,
@@ -253,64 +255,102 @@ def analyze_backlinks(url: str):
                 "severity": random.choice(["low", "medium", "high"])
             })
         
-        # Generate opportunities (competitor gap analysis)
-        # Analyze high-authority source domains to identify gaps
+        # METHOD 1: Extract competitor domains from backlink sources
+        # Competitors are often linked from the same authority sources as you
         high_auth_sources = [link["source_domain"] for link in backlinks_data["link_profile"]["high_authority_links"]]
-        medium_auth_sources = [link["source_domain"] for link in backlinks_data["link_profile"]["medium_authority_links"]]
         
-        # Simulate competitor backlink profiles
-        competitors = [
-            {"domain": "competitor1.com", "advantage": "stronger technology partnerships"},
-            {"domain": "competitor2.com", "advantage": "more industry publications"},
-            {"domain": "competitor3.com", "advantage": "better resource coverage"}
-        ]
+        # Simulate that high-authority domains link to 2-3 competitors as well
+        backlinks_data["competitor_analysis"] = {
+            "detection_method": "⚠️ DEMO: Authority source analysis - competitors found in same high-authority linking domains",
+            "data_source": "SIMULATED",
+            "note": "Competitor information is simulated for demo purposes. Real data requires integration with Ahrefs, SEMrush, or Majestic API.",
+            "competitors_detected": []
+        }
         
+        # Detect competitors based on common linking sources
+        detected_competitors = []
+        for source in high_auth_sources[::max(1, len(high_auth_sources) // 3)]:  # Sample every nth source
+            # Simulate that this authority source links to competitors
+            num_competitors_per_source = random.randint(1, 3)
+            for j in range(num_competitors_per_source):
+                comp_domain = f"[DEMO] competitor{len(detected_competitors) + 1}.com"
+                if comp_domain not in [c["domain"] for c in detected_competitors]:
+                    detected_competitors.append({
+                        "domain": comp_domain,
+                        "detected_from": source,
+                        "authority_level": "High-authority",
+                        "detection_confidence": round(random.uniform(0.7, 0.95), 2),
+                        "is_simulated": True
+                    })
+        
+        # If we found fewer than 3 competitors, add default ones
+        if len(detected_competitors) < 3:
+            default_competitors = [
+                {"domain": "[DEMO] competitor1.com", "detected_from": "industry_search", "authority_level": "Industry leader", "detection_confidence": 0.88, "is_simulated": True},
+                {"domain": "[DEMO] competitor2.com", "detected_from": "niche_directory", "authority_level": "Established player", "detection_confidence": 0.82, "is_simulated": True},
+                {"domain": "[DEMO] competitor3.com", "detected_from": "resource_site", "authority_level": "Growing competitor", "detection_confidence": 0.75, "is_simulated": True},
+            ]
+            detected_competitors.extend(default_competitors[:3 - len(detected_competitors)])
+        
+        backlinks_data["competitor_analysis"]["competitors_detected"] = detected_competitors
+        
+        # METHOD 2: Build competitor profiles by analyzing common backlink patterns
         backlinks_data["opportunities"] = []
         
-        # Generate realistic gap analysis
-        for idx, competitor in enumerate(competitors):
-            # Simulate competitor having some unique high-authority links
-            unique_high_auth_count = random.randint(5, 15)
-            unique_medium_auth_count = random.randint(8, 20)
+        for competitor in detected_competitors[:3]:  # Analyze top 3 competitors
+            # Simulate realistic competitor backlink profiles relative to user's profile
+            comp_total_backlinks = total_backlinks + random.randint(-100, 300)
+            comp_referring_domains = referring_domains + random.randint(-30, 100)
+            comp_high_auth_links = high_auth_count + random.randint(-5, 20)
+            comp_dofollow_percent = random.randint(65, 85)
+            comp_dofollow_links = int(comp_total_backlinks * (comp_dofollow_percent / 100))
             
-            # Gap opportunities based on authority distribution
-            if unique_high_auth_count > high_auth_count:
+            # Authority Gap Analysis
+            if comp_high_auth_links > high_auth_count + 5:
                 backlinks_data["opportunities"].append({
                     "type": "competitor_gap",
-                    "title": f"Authority Gap vs {competitor['domain']}",
-                    "description": f"{competitor['domain']} has {unique_high_auth_count} high-authority links (DA 60+) to your {high_auth_count}. This is a key competitive advantage.",
+                    "is_simulated": True,
+                    "title": f"[DEMO] Authority Gap vs {competitor['domain']}",
+                    "description": f"{competitor['domain']} (detected from {competitor['detected_from']}) has {comp_high_auth_links} high-authority links (DA 60+) vs your {high_auth_count}. This represents a {round((comp_high_auth_links - high_auth_count) / max(1, high_auth_count) * 100)}% advantage.",
                     "competitor": competitor["domain"],
-                    "gap_metric": f"{unique_high_auth_count} vs {high_auth_count} DA60+ links",
-                    "estimated_impact": "High" if unique_high_auth_count > high_auth_count + 10 else "Medium",
-                    "action": "Identify their top referrers and conduct targeted outreach to similar authority domains",
-                    "potential_links": unique_high_auth_count - high_auth_count
+                    "detection_confidence": competitor["detection_confidence"],
+                    "gap_metric": f"{comp_high_auth_links} vs {high_auth_count} DA60+ links",
+                    "estimated_impact": "High" if comp_high_auth_links > high_auth_count + 15 else "Medium",
+                    "action": "Research their high-authority backlinks. Identify the top 10 sources and develop targeted outreach strategy.",
+                    "potential_links": comp_high_auth_links - high_auth_count
                 })
             
-            # Gap based on anchor text diversity
-            if random.random() > 0.5:
+            # Referring Domain Diversity Gap
+            if comp_referring_domains > referring_domains + 20:
                 backlinks_data["opportunities"].append({
                     "type": "competitor_gap",
-                    "title": f"Anchor Text Opportunity vs {competitor['domain']}",
-                    "description": f"Competitor uses more branded and keyword-rich anchor text. They have {competitor['advantage']}.",
+                    "is_simulated": True,
+                    "title": f"[DEMO] Domain Diversity Gap vs {competitor['domain']}",
+                    "description": f"{competitor['domain']} has links from {comp_referring_domains} unique domains (your {referring_domains}). They have {round((comp_referring_domains - referring_domains) / referring_domains * 100)}% more link sources.",
                     "competitor": competitor["domain"],
-                    "gap_metric": "Anchor text diversity",
-                    "estimated_impact": "Medium",
-                    "action": "Negotiate better anchor text with existing link partners and target publications that use keyword-rich anchors",
-                    "potential_links": random.randint(10, 30)
-                })
-            
-            # Gap based on referring domain diversity
-            comp_referring_domains = random.randint(referring_domains + 20, referring_domains + 80)
-            if comp_referring_domains > referring_domains:
-                backlinks_data["opportunities"].append({
-                    "type": "competitor_gap",
-                    "title": f"Referring Domain Expansion vs {competitor['domain']}",
-                    "description": f"{competitor['domain']} has links from {comp_referring_domains} domains vs your {referring_domains}. Expand your source diversity.",
-                    "competitor": competitor["domain"],
+                    "detection_confidence": competitor["detection_confidence"],
                     "gap_metric": f"{comp_referring_domains} vs {referring_domains} referring domains",
-                    "estimated_impact": "High",
-                    "action": "Build relationships with niche-relevant websites and directories for link placement",
+                    "estimated_impact": "High" if comp_referring_domains > referring_domains + 50 else "Medium",
+                    "action": "Analyze their link sources. Target niche directories, industry databases, and associations they're listed in.",
                     "potential_links": comp_referring_domains - referring_domains
+                })
+            
+            # Dofollow Link Quality Gap
+            comp_dofollow_ratio = (comp_dofollow_links / max(1, comp_total_backlinks) * 100) if comp_total_backlinks > 0 else 0
+            user_dofollow_ratio = (backlinks_data["dofollow_links"] / total_backlinks * 100) if total_backlinks > 0 else 0
+            
+            if comp_dofollow_ratio > user_dofollow_ratio + 5:
+                backlinks_data["opportunities"].append({
+                    "type": "competitor_gap",
+                    "is_simulated": True,
+                    "title": f"[DEMO] Link Quality Gap vs {competitor['domain']}",
+                    "description": f"{competitor['domain']} has a {comp_dofollow_ratio:.0f}% dofollow ratio vs your {user_dofollow_ratio:.0f}%. Higher quality link acquisition strategy.",
+                    "competitor": competitor["domain"],
+                    "detection_confidence": competitor["detection_confidence"],
+                    "gap_metric": f"{comp_dofollow_ratio:.0f}% vs {user_dofollow_ratio:.0f}% dofollow",
+                    "estimated_impact": "Medium",
+                    "action": "Focus on dofollow link placements. Seek paid content and resource page links that pass link equity.",
+                    "potential_links": int(comp_dofollow_links - backlinks_data["dofollow_links"])
                 })
         
         # Link velocity (estimated new links per month)
