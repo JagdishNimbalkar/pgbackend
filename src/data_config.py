@@ -278,32 +278,56 @@ DOFOLLOW_QUALITY_GAP_IMPACT = 5     # More than 5% dofollow ratio difference
 # Link categories for classification
 LINK_CATEGORIES = {
     'navigation': {
-        'keywords': ['home', 'about', 'contact', 'services', 'products', 'menu', 'nav'],
+        'keywords': ['home', 'about', 'contact', 'menu', 'nav', 'header', 'footer', 'sitemap'],
         'description': 'Navigation and menu links'
     },
+    'ecommerce': {
+        'keywords': ['shop', 'store', 'cart', 'checkout', 'buy', 'purchase', 'order', 'product', 'products', 'item', 'items'],
+        'description': 'E-commerce and shopping links'
+    },
+    'product': {
+        'keywords': ['product', 'item', 'catalog', 'inventory', 'merchandise', 'goods', 'sku'],
+        'description': 'Product pages and listings'
+    },
+    'account': {
+        'keywords': ['login', 'signup', 'register', 'account', 'profile', 'dashboard', 'settings', 'logout', 'signin'],
+        'description': 'User account and authentication links'
+    },
+    'support': {
+        'keywords': ['help', 'support', 'faq', 'documentation', 'docs', 'tutorial', 'guide', 'contact', 'service'],
+        'description': 'Support and help resources'
+    },
     'social': {
-        'keywords': ['facebook', 'twitter', 'instagram', 'linkedin', 'youtube', 'pinterest', 'social'],
+        'keywords': ['facebook', 'twitter', 'instagram', 'linkedin', 'youtube', 'pinterest', 'tiktok', 'reddit', 'social', 'share'],
         'description': 'Social media links'
     },
     'legal': {
-        'keywords': ['privacy', 'terms', 'disclaimer', 'legal', 'cookie', 'policy'],
+        'keywords': ['privacy', 'terms', 'disclaimer', 'legal', 'cookie', 'policy', 'gdpr', 'compliance', 'license'],
         'description': 'Legal and policy pages'
     },
+    'content': {
+        'keywords': ['blog', 'article', 'post', 'news', 'story', 'press', 'magazine', 'publication'],
+        'description': 'Blog and content pages'
+    },
     'business': {
-        'keywords': ['pricing', 'plans', 'features', 'blog', 'case-study', 'resources', 'guides'],
-        'description': 'Business and content pages'
+        'keywords': ['pricing', 'plans', 'features', 'case-study', 'resources', 'solutions', 'enterprise', 'demo'],
+        'description': 'Business and marketing pages'
+    },
+    'careers': {
+        'keywords': ['career', 'careers', 'jobs', 'hiring', 'employment', 'work', 'join', 'team', 'vacancy'],
+        'description': 'Career and job opportunity links'
     },
     'external': {
         'keywords': [],  # Will be determined by domain check
         'description': 'External third-party links'
     },
     'media': {
-        'keywords': ['image', 'video', 'pdf', 'download', 'media', 'gallery'],
+        'keywords': ['image', 'video', 'pdf', 'download', 'media', 'gallery', 'photo', 'audio', 'file'],
         'description': 'Media and downloadable content'
     },
     'utility': {
-        'keywords': ['search', 'filter', 'tag', 'category', 'archive', 'sitemap'],
-        'description': 'Utility and filter pages'
+        'keywords': ['search', 'filter', 'tag', 'category', 'archive', 'rss', 'feed', 'print', 'email'],
+        'description': 'Utility and functional pages'
     }
 }
 

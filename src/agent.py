@@ -350,6 +350,27 @@ def node_analyze_link_categories(state: LinkCategorizationState):
     else:
         insights.append(f"Good navigation structure: {nav_count} navigation links found.")
     
+    # E-commerce links analysis
+    ecommerce_count = categories.get("ecommerce", {}).get("count", 0)
+    product_count = categories.get("product", {}).get("count", 0)
+    if ecommerce_count > 0 or product_count > 0:
+        total_shopping = ecommerce_count + product_count
+        insights.append(f"E-commerce presence: {total_shopping} shopping/product links found ({ecommerce_count} commerce, {product_count} products).")
+        if ecommerce_count > 0 and product_count == 0:
+            recommendations.append("Consider adding direct product links to improve shopping experience.")
+    
+    # User account links analysis
+    account_count = categories.get("account", {}).get("count", 0)
+    if account_count > 0:
+        insights.append(f"User authentication: {account_count} account-related links found.")
+    
+    # Support links analysis
+    support_count = categories.get("support", {}).get("count", 0)
+    if support_count == 0:
+        recommendations.append("Add support/help links to assist users with questions or issues.")
+    else:
+        insights.append(f"Customer support: {support_count} help/support links found.")
+    
     # Social media links analysis
     social_count = categories.get("social", {}).get("count", 0)
     if social_count == 0:
@@ -365,12 +386,22 @@ def node_analyze_link_categories(state: LinkCategorizationState):
     else:
         insights.append(f"Legal compliance: {legal_count} legal/policy links present.")
     
-    # Business/Content links analysis
+    # Content links analysis
+    content_count = categories.get("content", {}).get("count", 0)
+    if content_count > 10:
+        insights.append(f"Rich content: {content_count} blog/article links found.")
+    elif content_count > 0:
+        insights.append(f"Content available: {content_count} blog/article links.")
+    
+    # Business links analysis
     business_count = categories.get("business", {}).get("count", 0)
-    if business_count == 0:
-        warnings.append("No business/content links found. Add blog posts, resources, or product pages.")
-    else:
-        insights.append(f"Content depth: {business_count} business/content links found.")
+    if business_count > 0:
+        insights.append(f"Business pages: {business_count} marketing/business links found.")
+    
+    # Careers links analysis
+    careers_count = categories.get("careers", {}).get("count", 0)
+    if careers_count > 0:
+        insights.append(f"Hiring opportunities: {careers_count} career/jobs links found.")
     
     # External links analysis
     external_count = categories.get("external", {}).get("count", 0)
@@ -431,26 +462,35 @@ def node_analyze_link_categories(state: LinkCategorizationState):
         insights.append(f"{sponsored_count} links properly marked as sponsored.")
     
     # Generate overall score
-    score = 70  # Base score
+    score = 65  # Base score
     
     # Add points for good practices
     if nav_count >= 5: score += 5
     if social_count > 0: score += 3
     if legal_count > 0: score += 5
-    if business_count >= 10: score += 5
+    if support_count > 0: score += 3
+    if content_count > 5: score += 4
+    if ecommerce_count > 0 or product_count > 0: score += 3
+    if account_count > 0: score += 2
+    if careers_count > 0: score += 2
+    if business_count >= 5: score += 3
     if 0.2 <= external_percentage <= 30: score += 7
     if no_anchor_text == 0: score += 5
     
     # Subtract points for issues
     if nav_count == 0: score -= 10
     if legal_count == 0: score -= 5
+    if support_count == 0: score -= 3
     if external_percentage > 70: score -= 10
     if no_anchor_text > total_links * 0.2: score -= 10
     
     score = max(0, min(100, score))  # Clamp between 0-100
     
+    # Count how many categories have links
+    active_categories = sum(1 for cat_data in categories.values() if cat_data.get("count", 0) > 0)
+    
     report = {
-        "summary": f"Analyzed {total_links} links across 7 categories from {page_domain}",
+        "summary": f"Analyzed {total_links} links across {active_categories} categories from {page_domain}",
         "link_quality_score": score,
         "total_links": total_links,
         "internal_links": internal_count,
