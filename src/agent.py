@@ -33,15 +33,30 @@ def node_technical_audit(state: AgentState):
     url = state["url"]
     existing_data = state["audit_data"]
     
-    # Run tools
-    meta = extract_meta_tags(url)
-    broken_links = check_broken_links(url, limit=5)
-    
-    existing_data["technical"] = {
-        "meta_tags": meta,
-        "broken_links": broken_links
-    }
-    return {"audit_data": existing_data}
+    try:
+        # Run tools
+        meta = extract_meta_tags(url)
+        
+        # Check if tools returned errors
+        if isinstance(meta, dict) and "error" in meta:
+            existing_data["technical"] = {
+                "error": meta.get("error"),
+                "message": meta.get("message"),
+                "access_blocked": meta.get("access_blocked", False)
+            }
+            error_msg = f"Technical audit failed: {meta.get('error')}"
+            return {"audit_data": existing_data, "errors": [error_msg]}
+        
+        broken_links = check_broken_links(url, limit=5)
+        
+        existing_data["technical"] = {
+            "meta_tags": meta,
+            "broken_links": broken_links
+        }
+        return {"audit_data": existing_data}
+    except Exception as e:
+        return {"errors": [f"Technical audit error: {str(e)}"]}
+
 
 def node_performance_audit(state: AgentState):
     """Runs performance checks."""
@@ -74,6 +89,38 @@ def node_report_generator(state: AgentState):
     """
     print("--- GENERATING REPORT ---")
     data = state["audit_data"]
+    errors = state.get("errors", [])
+    
+    # Check if there were errors during audit
+    if errors:
+        error_msg = errors[0]
+        # Check if technical audit had access blocked info
+        access_blocked = data.get("technical", {}).get("access_blocked", False) if isinstance(data.get("technical"), dict) else False
+        
+        report = {
+            "summary": "Audit Failed",
+            "error": error_msg.replace("Technical audit failed: ", ""),
+            "message": error_msg,
+            "success": False,
+            "access_blocked": access_blocked,
+            "generated_insights": [],
+            "raw_data": data
+        }
+        return {"final_report": report}
+    
+    # Check if technical audit had errors
+    if isinstance(data.get("technical"), dict) and "error" in data.get("technical", {}):
+        tech_error = data["technical"]
+        report = {
+            "summary": "Audit Failed",
+            "error": tech_error["error"],
+            "message": tech_error.get("message"),
+            "success": False,
+            "access_blocked": tech_error.get("access_blocked", False),
+            "generated_insights": [],
+            "raw_data": data
+        }
+        return {"final_report": report}
     
     # Simple rule-based insight generation (Simulating LLM logic)
     insights = []
@@ -91,7 +138,8 @@ def node_report_generator(state: AgentState):
     report = {
         "summary": "Audit Complete",
         "generated_insights": insights,
-        "raw_data": data
+        "raw_data": data,
+        "success": True
     }
     
     return {"final_report": report}
@@ -146,7 +194,15 @@ def node_analyze_link_profile(state: BacklinksState):
     data = state["backlinks_data"]
     
     if "error" in data:
-        return {"errors": [data["error"]]}
+        error_message = data.get("message", data.get("error", "Failed to fetch backlinks"))
+        return {
+            "analysis_report": {
+                "error": data["error"],
+                "message": error_message,
+                "success": False,
+                "access_blocked": data.get("access_blocked", False)
+            }
+        }
     
     insights = []
     recommendations = []
@@ -240,7 +296,8 @@ def node_analyze_link_profile(state: BacklinksState):
             "nofollow_links": data.get("nofollow_links", 0),
             "high_authority_count": high_auth,
             "toxic_links_count": len(toxic_links)
-        }
+        },
+        "success": True
     }
     
     return {"analysis_report": report}
@@ -249,12 +306,22 @@ def node_backlinks_report_generator(state: BacklinksState):
     """Generates final backlinks report combining data and analysis."""
     print("--- GENERATING BACKLINKS REPORT ---")
     
-    final_report = {
-        "type": "backlinks_analysis",
-        "backlinks_data": state.get("backlinks_data", {}),
-        "analysis": state.get("analysis_report", {}),
-        "errors": state.get("errors", [])
-    }
+    report = state.get("analysis_report", {})
+    
+    # Check if there was an error in the report
+    if report.get("success") == False and "error" in report:
+        final_report = {
+            "type": "backlinks_analysis",
+            "report": report,
+            "errors": state.get("errors", [])
+        }
+    else:
+        final_report = {
+            "type": "backlinks_analysis",
+            "report": report,
+            "backlinks_data": state.get("backlinks_data", {}),
+            "errors": state.get("errors", [])
+        }
     
     return {"analysis_report": final_report}
 
@@ -306,10 +373,34 @@ def node_analyze_link_categories(state: LinkCategorizationState):
     data = state["links_data"]
     
     if state.get("errors"):
-        return {"categorized_report": {"error": state["errors"][0]}}
+        return {
+            "categorized_report": {
+                "error": state["errors"][0],
+                "success": False
+            }
+        }
     
     if "error" in data:
-        return {"errors": [data["error"]], "categorized_report": {"error": data["error"]}}
+        # Check if this is an access blocked error
+        if data.get("access_blocked"):
+            error_message = data.get("message", "Website is blocking automated access")
+            return {
+                "categorized_report": {
+                    "error": data["error"],
+                    "message": error_message,
+                    "success": False,
+                    "access_blocked": True
+                }
+            }
+        else:
+            error_message = data.get("message", f"Failed to fetch links: {data['error']}")
+            return {
+                "categorized_report": {
+                    "error": data["error"],
+                    "message": error_message,
+                    "success": False
+                }
+            }
     
     insights = []
     recommendations = []
@@ -325,7 +416,8 @@ def node_analyze_link_categories(state: LinkCategorizationState):
         return {"categorized_report": {
             "summary": "No links detected",
             "insights": insights,
-            "warnings": warnings
+            "warnings": warnings,
+            "success": False
         }}
     
     # Analyze each category

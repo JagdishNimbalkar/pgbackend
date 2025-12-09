@@ -159,8 +159,25 @@ def get_page_links_by_category(url: str):
     Returns: dictionary of links organized by category
     """
     try:
-        headers = {'User-Agent': DEFAULT_USER_AGENT}
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
         response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        
+        if response.status_code == 403:
+            return {
+                'error': '403 Forbidden',
+                'page_url': url,
+                'message': 'This website is blocking automated access (403 Forbidden). The site may use protection services like Cloudflare or Akamai that prevent web scrapers. Try accessing the site directly in a browser.',
+                'status_code': 403,
+                'access_blocked': True
+            }
+        
         response.raise_for_status()
         
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -219,11 +236,26 @@ def get_page_links_by_category(url: str):
             'categories': categorized_links
         }
     
-    except Exception as e:
+    except requests.exceptions.Timeout:
         return {
-            'error': str(e),
+            'error': 'Request Timeout',
             'page_url': url,
-            'message': f'Failed to extract categorized links: {str(e)}'
+            'message': f'The request to {url} timed out. The server took too long to respond. Try again or check if the URL is correct.',
+            'timeout': True
+        }
+    except requests.exceptions.ConnectionError:
+        return {
+            'error': 'Connection Error',
+            'page_url': url,
+            'message': f'Could not connect to {url}. Please check if the URL is correct and the website is accessible.',
+            'connection_error': True
+        }
+    except Exception as e:
+        error_str = str(e)
+        return {
+            'error': error_str,
+            'page_url': url,
+            'message': f'Failed to extract links from {url}: {error_str}. Make sure the URL is accessible and returns HTML content.'
         }
 
 
@@ -527,8 +559,24 @@ def extract_meta_tags(url: str):
     Scrapes a URL to extract SEO-relevant meta tags (Title, Description, H1-H3).
     """
     try:
-        headers = {'User-Agent': DEFAULT_USER_AGENT}
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
         response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        
+        if response.status_code == 403:
+            return {
+                "error": "403 Forbidden",
+                "message": "This website is blocking automated access. The site may use protection services like Cloudflare or Akamai that prevent web scrapers.",
+                "access_blocked": True,
+                "status_code": 403
+            }
+        
         response.raise_for_status()
         
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -548,8 +596,25 @@ def extract_meta_tags(url: str):
             data["meta_description"] = meta_desc.get('content', "No Description Found")
             
         return data
+    except requests.exceptions.Timeout:
+        return {
+            "error": "Request Timeout",
+            "message": f"The request to {url} timed out. The server took too long to respond.",
+            "timeout": True
+        }
+    except requests.exceptions.ConnectionError:
+        return {
+            "error": "Connection Error",
+            "message": f"Could not connect to {url}. Please check if the URL is correct and the website is accessible.",
+            "connection_error": True
+        }
     except Exception as e:
-        return {"error": str(e)}
+        error_str = str(e)
+        return {
+            "error": error_str,
+            "message": f"Failed to extract meta tags from {url}: {error_str}"
+        }
+
 
 # --- 2. Broken Link Checker (Lightweight) ---
 def check_broken_links(url: str, limit: int = None):

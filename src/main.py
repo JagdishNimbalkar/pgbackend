@@ -138,7 +138,20 @@ def run_audit_agent(request: AuditRequest):
     try:
         # Invoke LangGraph workflow
         result = seo_agent_app.invoke(initial_state)
-        return result["final_report"]
+        report = result["final_report"]
+        
+        # Check if there was an error in the audit
+        if isinstance(report, dict) and report.get("success") == False and "error" in report:
+            return {
+                "summary": "Audit Failed",
+                "generated_insights": [],
+                "raw_data": {},
+                "error": report.get("error"),
+                "message": report.get("message", report.get("error")),
+                "access_blocked": report.get("access_blocked", False)
+            }
+        
+        return report
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -154,7 +167,35 @@ def run_backlinks_agent(request: UrlRequest):
     try:
         # Invoke LangGraph backlinks workflow
         result = backlinks_agent_app.invoke(initial_state)
-        return result["analysis_report"]
+        final_report = result["analysis_report"]
+        
+        # Check if there was an error in the report
+        if isinstance(final_report, dict) and "report" in final_report:
+            report = final_report.get("report", {})
+            
+            # Check if there was an error
+            if report.get("success") == False and "error" in report:
+                return {
+                    "quality_score": 0,
+                    "summary": "Analysis Failed",
+                    "insights": [],
+                    "recommendations": [],
+                    "data_summary": {},
+                    "error": report.get("error"),
+                    "message": report.get("message", report.get("error")),
+                    "access_blocked": report.get("access_blocked", False)
+                }
+            
+            # Successful analysis
+            return {
+                "quality_score": report.get("quality_score", 0),
+                "summary": report.get("summary", ""),
+                "insights": report.get("insights", []),
+                "recommendations": report.get("recommendations", []),
+                "data_summary": report.get("data_summary", {})
+            }
+        
+        return final_report
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -176,10 +217,25 @@ def run_link_categorization_agent(request: UrlRequest):
         result = link_categorization_agent_app.invoke(initial_state)
         final_report = result["categorized_report"]
         
-        # Flatten the nested structure for frontend consumption
+        # Extract the nested report structure
         if isinstance(final_report, dict) and "report" in final_report:
-            # Extract the actual report data from the nested structure
             actual_report = final_report.get("report", {})
+            
+            # Check if there was an error in the report
+            if actual_report.get("success") == False and "error" in actual_report:
+                return {
+                    "total_links": 0,
+                    "internal_links": 0,
+                    "external_links": 0,
+                    "quality_score": 0,
+                    "categories": {},
+                    "insights": [],
+                    "warnings": [actual_report.get("message", actual_report.get("error", "Failed to fetch links"))],
+                    "recommendations": [],
+                    "all_links": [],
+                    "error": actual_report.get("error"),
+                    "access_blocked": actual_report.get("access_blocked", False)
+                }
             
             # Flatten the category data and collect all links
             categories = {}
