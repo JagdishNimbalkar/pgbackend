@@ -1,6 +1,7 @@
-from typing import TypedDict, List, Dict, Any
+from typing import TypedDict, List, Dict, Any, Annotated
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from operator import add
 from tools import (
     extract_meta_tags, 
     get_page_speed, 
@@ -639,7 +640,7 @@ class CoreWebVitalsState(TypedDict):
     cwv_data_mobile: Dict[str, Any]
     analysis: Dict[str, Any]
     final_report: Dict[str, Any]
-    errors: List[str]
+    errors: Annotated[List[str], add]
 
 def node_cwv_setup(state: CoreWebVitalsState):
     """Initialize CWV assessment."""
@@ -666,9 +667,9 @@ def node_cwv_desktop(state: CoreWebVitalsState):
                 "errors": [f"Desktop CWV fetch failed: {cwv_data.get('error')}"]
             }
         
-        return {"cwv_data_desktop": cwv_data}
+        return {"cwv_data_desktop": cwv_data, "errors": []}
     except Exception as e:
-        return {"errors": [f"Desktop CWV error: {str(e)}"]}
+        return {"cwv_data_desktop": {}, "errors": [f"Desktop CWV error: {str(e)}"]}
 
 def node_cwv_mobile(state: CoreWebVitalsState):
     """Fetch mobile Core Web Vitals."""
@@ -684,9 +685,9 @@ def node_cwv_mobile(state: CoreWebVitalsState):
                 "errors": [f"Mobile CWV fetch failed: {cwv_data.get('error')}"]
             }
         
-        return {"cwv_data_mobile": cwv_data}
+        return {"cwv_data_mobile": cwv_data, "errors": []}
     except Exception as e:
-        return {"errors": [f"Mobile CWV error: {str(e)}"]}
+        return {"cwv_data_mobile": {}, "errors": [f"Mobile CWV error: {str(e)}"]}
 
 def node_cwv_analysis(state: CoreWebVitalsState):
     """Analyze CWV metrics and generate recommendations."""
@@ -727,7 +728,7 @@ def node_cwv_analysis(state: CoreWebVitalsState):
         if mobile_data.get("cls", float('inf')) > 0.25:
             analysis["comparison"]["critical_issues"].append("Mobile CLS is poor")
     
-    return {"analysis": analysis}
+    return {"analysis": analysis, "errors": []}
 
 def node_cwv_report_generator(state: CoreWebVitalsState):
     """Generate final CWV assessment report."""
@@ -747,7 +748,8 @@ def node_cwv_report_generator(state: CoreWebVitalsState):
                 "url": url,
                 "error": errors[0],
                 "message": "Failed to assess Core Web Vitals"
-            }
+            },
+            "errors": []
         }
     
     report = {
@@ -767,7 +769,7 @@ def node_cwv_report_generator(state: CoreWebVitalsState):
         "errors": errors
     }
     
-    return {"final_report": report}
+    return {"final_report": report, "errors": []}
 
 # Build the Core Web Vitals Workflow
 cwv_workflow = StateGraph(CoreWebVitalsState)
