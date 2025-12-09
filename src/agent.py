@@ -9,7 +9,9 @@ from tools import (
     analyze_backlinks, 
     extract_page_backlinks,
     get_page_links_by_category,
-    crawl_sitemap_pages
+    crawl_sitemap_pages,
+    get_core_web_vitals,
+    analyze_cwv_improvements
 )
 
 # 1. Define Agent State
@@ -623,5 +625,167 @@ links_workflow.add_edge("setup", "collect")
 links_workflow.add_edge("collect", "analyze")
 links_workflow.add_edge("analyze", "reporter")
 links_workflow.add_edge("reporter", END)
+
+link_categorization_agent_app = links_workflow.compile()
+
+
+# ============================================================================
+# CORE WEB VITALS ASSESSMENT AGENT
+# ============================================================================
+
+class CoreWebVitalsState(TypedDict):
+    url: str
+    cwv_data_desktop: Dict[str, Any]
+    cwv_data_mobile: Dict[str, Any]
+    analysis: Dict[str, Any]
+    final_report: Dict[str, Any]
+    errors: List[str]
+
+def node_cwv_setup(state: CoreWebVitalsState):
+    """Initialize CWV assessment."""
+    print(f"--- STARTING CORE WEB VITALS ASSESSMENT FOR: {state['url']} ---")
+    return {
+        "cwv_data_desktop": {},
+        "cwv_data_mobile": {},
+        "analysis": {},
+        "final_report": {},
+        "errors": []
+    }
+
+def node_cwv_desktop(state: CoreWebVitalsState):
+    """Fetch desktop Core Web Vitals."""
+    print("--- FETCHING DESKTOP CORE WEB VITALS ---")
+    url = state["url"]
+    
+    try:
+        cwv_data = get_core_web_vitals(url, strategy="desktop")
+        
+        if "error" in cwv_data:
+            return {
+                "cwv_data_desktop": cwv_data,
+                "errors": [f"Desktop CWV fetch failed: {cwv_data.get('error')}"]
+            }
+        
+        return {"cwv_data_desktop": cwv_data}
+    except Exception as e:
+        return {"errors": [f"Desktop CWV error: {str(e)}"]}
+
+def node_cwv_mobile(state: CoreWebVitalsState):
+    """Fetch mobile Core Web Vitals."""
+    print("--- FETCHING MOBILE CORE WEB VITALS ---")
+    url = state["url"]
+    
+    try:
+        cwv_data = get_core_web_vitals(url, strategy="mobile")
+        
+        if "error" in cwv_data:
+            return {
+                "cwv_data_mobile": cwv_data,
+                "errors": [f"Mobile CWV fetch failed: {cwv_data.get('error')}"]
+            }
+        
+        return {"cwv_data_mobile": cwv_data}
+    except Exception as e:
+        return {"errors": [f"Mobile CWV error: {str(e)}"]}
+
+def node_cwv_analysis(state: CoreWebVitalsState):
+    """Analyze CWV metrics and generate recommendations."""
+    print("--- ANALYZING CORE WEB VITALS ---")
+    
+    desktop_data = state.get("cwv_data_desktop", {})
+    mobile_data = state.get("cwv_data_mobile", {})
+    
+    # Analyze both strategies
+    desktop_analysis = analyze_cwv_improvements(desktop_data) if desktop_data else {}
+    mobile_analysis = analyze_cwv_improvements(mobile_data) if mobile_data else {}
+    
+    analysis = {
+        "desktop": desktop_analysis,
+        "mobile": mobile_analysis,
+        "comparison": {
+            "desktop_score": desktop_analysis.get("overall_score", 0),
+            "mobile_score": mobile_analysis.get("overall_score", 0),
+            "critical_issues": [],
+            "optimization_opportunities": []
+        }
+    }
+    
+    # Compare and identify critical issues
+    if desktop_data and "error" not in desktop_data:
+        if desktop_data.get("lcp", float('inf')) > 4000:
+            analysis["comparison"]["critical_issues"].append("Desktop LCP is poor")
+        if desktop_data.get("inp", float('inf')) > 500:
+            analysis["comparison"]["critical_issues"].append("Desktop INP is poor")
+        if desktop_data.get("cls", float('inf')) > 0.25:
+            analysis["comparison"]["critical_issues"].append("Desktop CLS is poor")
+    
+    if mobile_data and "error" not in mobile_data:
+        if mobile_data.get("lcp", float('inf')) > 4000:
+            analysis["comparison"]["critical_issues"].append("Mobile LCP is poor")
+        if mobile_data.get("inp", float('inf')) > 500:
+            analysis["comparison"]["critical_issues"].append("Mobile INP is poor")
+        if mobile_data.get("cls", float('inf')) > 0.25:
+            analysis["comparison"]["critical_issues"].append("Mobile CLS is poor")
+    
+    return {"analysis": analysis}
+
+def node_cwv_report_generator(state: CoreWebVitalsState):
+    """Generate final CWV assessment report."""
+    print("--- GENERATING CORE WEB VITALS REPORT ---")
+    
+    url = state.get("url", "")
+    desktop_data = state.get("cwv_data_desktop", {})
+    mobile_data = state.get("cwv_data_mobile", {})
+    analysis = state.get("analysis", {})
+    errors = state.get("errors", [])
+    
+    # Handle errors
+    if errors and ("error" in desktop_data and "error" in mobile_data):
+        return {
+            "final_report": {
+                "success": False,
+                "url": url,
+                "error": errors[0],
+                "message": "Failed to assess Core Web Vitals"
+            }
+        }
+    
+    report = {
+        "url": url,
+        "success": True,
+        "desktop": {
+            "metrics": desktop_data if "error" not in desktop_data else {},
+            "analysis": analysis.get("desktop", {}),
+            "score": analysis.get("desktop", {}).get("overall_score", 0)
+        },
+        "mobile": {
+            "metrics": mobile_data if "error" not in mobile_data else {},
+            "analysis": analysis.get("mobile", {}),
+            "score": analysis.get("mobile", {}).get("overall_score", 0)
+        },
+        "comparison": analysis.get("comparison", {}),
+        "errors": errors
+    }
+    
+    return {"final_report": report}
+
+# Build the Core Web Vitals Workflow
+cwv_workflow = StateGraph(CoreWebVitalsState)
+
+cwv_workflow.add_node("setup", node_cwv_setup)
+cwv_workflow.add_node("desktop", node_cwv_desktop)
+cwv_workflow.add_node("mobile", node_cwv_mobile)
+cwv_workflow.add_node("analyze", node_cwv_analysis)
+cwv_workflow.add_node("report", node_cwv_report_generator)
+
+cwv_workflow.set_entry_point("setup")
+cwv_workflow.add_edge("setup", "desktop")
+cwv_workflow.add_edge("setup", "mobile")
+cwv_workflow.add_edge("desktop", "analyze")
+cwv_workflow.add_edge("mobile", "analyze")
+cwv_workflow.add_edge("analyze", "report")
+cwv_workflow.add_edge("report", END)
+
+core_web_vitals_agent_app = cwv_workflow.compile()
 
 link_categorization_agent_app = links_workflow.compile()

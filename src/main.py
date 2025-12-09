@@ -18,9 +18,11 @@ from tools import (
     extract_page_backlinks,
     get_page_links_by_category,
     crawl_sitemap_pages,
-    parse_sitemap
+    parse_sitemap,
+    get_core_web_vitals,
+    analyze_cwv_improvements
 )
-from agent import seo_agent_app, backlinks_agent_app, link_categorization_agent_app
+from agent import seo_agent_app, backlinks_agent_app, link_categorization_agent_app, core_web_vitals_agent_app
 
 app = FastAPI(title="SEO Agent API", version="1.0")
 
@@ -279,6 +281,61 @@ def run_link_categorization_agent(request: UrlRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/agent/core-web-vitals")
+def run_core_web_vitals_agent(request: UrlRequest):
+    """
+    Run the Core Web Vitals Assessment Agent to evaluate:
+    - Largest Contentful Paint (LCP)
+    - Interaction to Next Paint (INP)
+    - Cumulative Layout Shift (CLS)
+    - First Contentful Paint (FCP)
+    - Time to First Byte (TTFB)
+    
+    Provides metrics for both desktop and mobile versions.
+    """
+    initial_state = {
+        "url": request.url,
+        "cwv_data_desktop": {},
+        "cwv_data_mobile": {},
+        "analysis": {},
+        "final_report": {},
+        "errors": []
+    }
+    
+    try:
+        # Invoke LangGraph CWV workflow
+        result = core_web_vitals_agent_app.invoke(initial_state)
+        final_report = result["final_report"]
+        
+        # Check if assessment failed
+        if isinstance(final_report, dict) and final_report.get("success") == False:
+            return {
+                "success": False,
+                "error": final_report.get("error"),
+                "message": final_report.get("message"),
+                "desktop": {},
+                "mobile": {},
+                "comparison": {}
+            }
+        
+        # Successful assessment
+        return {
+            "success": True,
+            "url": final_report.get("url"),
+            "desktop": final_report.get("desktop", {}),
+            "mobile": final_report.get("mobile", {}),
+            "comparison": final_report.get("comparison", {}),
+            "errors": final_report.get("errors", [])
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "Failed to assess Core Web Vitals",
+            "desktop": {},
+            "mobile": {},
+            "comparison": {}
+        }
 
 
 if __name__ == "__main__":

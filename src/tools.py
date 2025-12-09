@@ -1091,3 +1091,287 @@ def analyze_backlinks(url: str):
         
     except Exception as e:
         return {"error": str(e), "domain": url}
+
+
+# ============================================================================
+# CORE WEB VITALS ASSESSMENT FUNCTIONS
+# ============================================================================
+
+def get_core_web_vitals(url: str, strategy: str = "desktop"):
+    """
+    Fetches Core Web Vitals from Google PageSpeed API.
+    
+    Args:
+        url: Website URL to assess
+        strategy: "desktop" or "mobile"
+    
+    Returns:
+        Dictionary with CWV metrics and status
+    """
+    try:
+        # Get PageSpeed API key from environment or use demo mode
+        api_key = os.getenv("PAGESPEED_API_KEY", "demo")
+        
+        # Google PageSpeed API endpoint
+        api_url = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
+        
+        params = {
+            "url": url,
+            "strategy": strategy,
+            "key": api_key,
+            "category": ["performance", "accessibility", "best-practices", "seo", "pwa"]
+        }
+        
+        headers = {'User-Agent': DEFAULT_USER_AGENT}
+        response = requests.get(api_url, params=params, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # Extract Core Web Vitals from response
+        metrics = data.get("lighthouseResult", {}).get("audits", {})
+        
+        # Parse individual metrics
+        cwv_data = {
+            "strategy": strategy,
+            "url": url,
+            "performance_score": data.get("lighthouseResult", {}).get("categories", {}).get("performance", {}).get("score", 0) * 100,
+            "accessibility_score": data.get("lighthouseResult", {}).get("categories", {}).get("accessibility", {}).get("score", 0) * 100,
+            "best_practices_score": data.get("lighthouseResult", {}).get("categories", {}).get("best-practices", {}).get("score", 0) * 100,
+            "seo_score": data.get("lighthouseResult", {}).get("categories", {}).get("seo", {}).get("score", 0) * 100,
+        }
+        
+        # Extract Core Web Vitals
+        if "largest-contentful-paint" in metrics:
+            lcp = metrics["largest-contentful-paint"].get("numericValue", 0)
+            cwv_data["lcp"] = lcp
+            cwv_data["lcp_status"] = "good" if lcp <= 2500 else "needs_improvement" if lcp <= 4000 else "poor"
+        
+        if "interaction-to-next-paint" in metrics:
+            inp = metrics["interaction-to-next-paint"].get("numericValue", 0)
+            cwv_data["inp"] = inp
+            cwv_data["inp_status"] = "good" if inp <= 200 else "needs_improvement" if inp <= 500 else "poor"
+        
+        if "cumulative-layout-shift" in metrics:
+            cls = metrics["cumulative-layout-shift"].get("numericValue", 0)
+            cwv_data["cls"] = cls
+            cwv_data["cls_status"] = "good" if cls <= 0.1 else "needs_improvement" if cls <= 0.25 else "poor"
+        
+        if "first-contentful-paint" in metrics:
+            fcp = metrics["first-contentful-paint"].get("numericValue", 0)
+            cwv_data["fcp"] = fcp
+            cwv_data["fcp_status"] = "good" if fcp <= 1800 else "needs_improvement" if fcp <= 3000 else "poor"
+        
+        if "server-response-time" in metrics:
+            ttfb = metrics["server-response-time"].get("numericValue", 0)
+            cwv_data["ttfb"] = ttfb
+            cwv_data["ttfb_status"] = "good" if ttfb <= 600 else "needs_improvement" if ttfb <= 1800 else "poor"
+        
+        # Get opportunities and diagnostics for improvement recommendations
+        cwv_data["opportunities"] = data.get("lighthouseResult", {}).get("categories", {}).get("performance", {}).get("auditRefs", [])
+        cwv_data["diagnostics"] = metrics
+        
+        return cwv_data
+        
+    except Exception as e:
+        return {
+            "error": f"Failed to fetch Core Web Vitals: {str(e)}",
+            "url": url,
+            "strategy": strategy
+        }
+
+
+def analyze_cwv_improvements(cwv_data: dict) -> dict:
+    """
+    Analyzes Core Web Vitals and provides improvement recommendations.
+    
+    Args:
+        cwv_data: Dictionary with CWV metrics from get_core_web_vitals()
+    
+    Returns:
+        Dictionary with analysis and recommendations
+    """
+    recommendations = []
+    insights = []
+    warnings = []
+    
+    if "error" in cwv_data:
+        return {
+            "error": cwv_data.get("error"),
+            "recommendations": [],
+            "insights": [],
+            "warnings": []
+        }
+    
+    # Analyze LCP (Largest Contentful Paint)
+    if "lcp" in cwv_data:
+        lcp = cwv_data["lcp"]
+        if lcp > 4000:
+            warnings.append(f"Poor LCP: {lcp:.0f}ms. This affects user experience significantly.")
+            recommendations.append({
+                "metric": "LCP",
+                "priority": "high",
+                "suggestions": [
+                    "Optimize and compress images (use modern formats like WebP)",
+                    "Defer non-critical JavaScript and CSS",
+                    "Implement lazy loading for images and iframes",
+                    "Use a Content Delivery Network (CDN)",
+                    "Upgrade server resources or implement caching",
+                    "Minimize critical rendering path by reducing blocking resources"
+                ]
+            })
+        elif lcp > 2500:
+            insights.append(f"LCP needs improvement: {lcp:.0f}ms. Target: ≤2.5s")
+            recommendations.append({
+                "metric": "LCP",
+                "priority": "medium",
+                "suggestions": [
+                    "Review image optimization strategies",
+                    "Consider implementing Service Workers for caching",
+                    "Reduce font load delays",
+                    "Optimize CSS delivery"
+                ]
+            })
+        else:
+            insights.append(f"Good LCP: {lcp:.0f}ms. Keep up the optimization!")
+    
+    # Analyze INP (Interaction to Next Paint)
+    if "inp" in cwv_data:
+        inp = cwv_data["inp"]
+        if inp > 500:
+            warnings.append(f"Poor INP: {inp:.0f}ms. User interactions are slow to respond.")
+            recommendations.append({
+                "metric": "INP",
+                "priority": "high",
+                "suggestions": [
+                    "Break up long JavaScript tasks (aim for <50ms tasks)",
+                    "Use Web Workers for heavy computations",
+                    "Optimize event listeners and handlers",
+                    "Profile with DevTools to identify bottlenecks",
+                    "Consider Code Splitting for JavaScript bundles",
+                    "Remove or defer unused JavaScript"
+                ]
+            })
+        elif inp > 200:
+            insights.append(f"INP needs improvement: {inp:.0f}ms. Target: ≤200ms")
+            recommendations.append({
+                "metric": "INP",
+                "priority": "medium",
+                "suggestions": [
+                    "Monitor and optimize JavaScript execution time",
+                    "Use requestIdleCallback for non-critical work",
+                    "Implement progressive enhancement",
+                    "Consider using faster frameworks or libraries"
+                ]
+            })
+        else:
+            insights.append(f"Good INP: {inp:.0f}ms. Responsive interactions!")
+    
+    # Analyze CLS (Cumulative Layout Shift)
+    if "cls" in cwv_data:
+        cls = cwv_data["cls"]
+        if cls > 0.25:
+            warnings.append(f"Poor CLS: {cls:.3f}. Layout shifts frustrate users.")
+            recommendations.append({
+                "metric": "CLS",
+                "priority": "high",
+                "suggestions": [
+                    "Set size attributes on images and videos",
+                    "Avoid inserting content above existing content",
+                    "Use transforms for animations instead of changing dimensions",
+                    "Avoid using document.write() or DOM manipulations that cause reflows",
+                    "Pre-allocate space for ads, embeds, and iframes",
+                    "Use font-display: swap or optional for web fonts"
+                ]
+            })
+        elif cls > 0.1:
+            insights.append(f"CLS needs improvement: {cls:.3f}. Target: ≤0.1")
+            recommendations.append({
+                "metric": "CLS",
+                "priority": "medium",
+                "suggestions": [
+                    "Review and fix known layout shift causes",
+                    "Use CSS containment for layout isolation",
+                    "Consider using aspect-ratio CSS property for responsive media"
+                ]
+            })
+        else:
+            insights.append(f"Good CLS: {cls:.3f}. Stable layout!")
+    
+    # Analyze FCP (First Contentful Paint)
+    if "fcp" in cwv_data:
+        fcp = cwv_data["fcp"]
+        if fcp > 3000:
+            warnings.append(f"Poor FCP: {fcp:.0f}ms. Users wait too long to see content.")
+            recommendations.append({
+                "metric": "FCP",
+                "priority": "high",
+                "suggestions": [
+                    "Eliminate render-blocking resources",
+                    "Inline critical CSS",
+                    "Pre-connect to critical third-party origins",
+                    "Reduce JavaScript bundle size",
+                    "Implement skeleton screens or placeholders"
+                ]
+            })
+        elif fcp > 1800:
+            insights.append(f"FCP needs improvement: {fcp:.0f}ms. Target: ≤1.8s")
+            recommendations.append({
+                "metric": "FCP",
+                "priority": "medium",
+                "suggestions": [
+                    "Optimize CSS delivery",
+                    "Consider critical CSS inlining",
+                    "Review server response times"
+                ]
+            })
+        else:
+            insights.append(f"Good FCP: {fcp:.0f}ms. Content appears quickly!")
+    
+    # Analyze TTFB (Time to First Byte)
+    if "ttfb" in cwv_data:
+        ttfb = cwv_data["ttfb"]
+        if ttfb > 1800:
+            warnings.append(f"Poor TTFB: {ttfb:.0f}ms. Server is slow to respond.")
+            recommendations.append({
+                "metric": "TTFB",
+                "priority": "high",
+                "suggestions": [
+                    "Upgrade hosting or use a faster server provider",
+                    "Implement server-side caching (Redis, Memcached)",
+                    "Use a Content Delivery Network (CDN)",
+                    "Optimize database queries and server-side code",
+                    "Enable GZIP compression",
+                    "Implement HTTP/2 or HTTP/3"
+                ]
+            })
+        elif ttfb > 600:
+            insights.append(f"TTFB needs improvement: {ttfb:.0f}ms. Target: ≤600ms")
+            recommendations.append({
+                "metric": "TTFB",
+                "priority": "medium",
+                "suggestions": [
+                    "Review hosting performance",
+                    "Implement caching strategies",
+                    "Consider CDN usage"
+                ]
+            })
+        else:
+            insights.append(f"Good TTFB: {ttfb:.0f}ms. Server responds quickly!")
+    
+    # Calculate overall CWV score
+    good_metrics = sum(1 for metric in ["lcp_status", "inp_status", "cls_status", "fcp_status", "ttfb_status"]
+                      if cwv_data.get(metric) == "good")
+    overall_score = (good_metrics / 5) * 100 if good_metrics > 0 else 0
+    
+    return {
+        "overall_score": overall_score,
+        "good_metrics_count": good_metrics,
+        "recommendations": recommendations,
+        "insights": insights,
+        "warnings": warnings,
+        "strategy": cwv_data.get("strategy", "unknown")
+    }
+
+
+import os
