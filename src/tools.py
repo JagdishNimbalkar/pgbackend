@@ -80,15 +80,31 @@ def parse_sitemap(sitemap_url: str):
     """
     Parses XML sitemap and extracts all URLs.
     Supports standard XML sitemaps and sitemap indexes.
-    Returns: list of URLs found in sitemap
+    Returns: dict with urls list or error message
     """
     try:
         headers = {'User-Agent': DEFAULT_USER_AGENT}
         response = requests.get(sitemap_url, headers=headers, timeout=SITEMAP_TIMEOUT)
         response.raise_for_status()
         
+        # Check if response is XML
+        content_type = response.headers.get('content-type', '').lower()
+        if 'html' in content_type:
+            return {
+                "error": "Invalid sitemap format",
+                "message": "The URL returned HTML instead of XML. Please verify the sitemap URL.",
+                "urls": []
+            }
+        
         # Parse XML
-        root = ET.fromstring(response.content)
+        try:
+            root = ET.fromstring(response.content)
+        except ET.ParseError as e:
+            return {
+                "error": "XML parsing failed",
+                "message": f"Invalid XML format: {str(e)}. Please ensure the URL points to a valid sitemap.xml file.",
+                "urls": []
+            }
         
         # Define namespace (sitemaps use XML namespaces)
         namespace = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
@@ -103,8 +119,11 @@ def parse_sitemap(sitemap_url: str):
                 sitemap_loc = sitemap.find('ns:loc', namespace)
                 if sitemap_loc is not None and sitemap_loc.text:
                     try:
-                        nested_urls = parse_sitemap(sitemap_loc.text)
-                        urls.extend(nested_urls)
+                        nested_result = parse_sitemap(sitemap_loc.text)
+                        if isinstance(nested_result, dict) and "urls" in nested_result:
+                            urls.extend(nested_result["urls"])
+                        elif isinstance(nested_result, list):
+                            urls.extend(nested_result)
                         if len(urls) >= SITEMAP_MAX_URLS:
                             break
                     except:
@@ -119,10 +138,46 @@ def parse_sitemap(sitemap_url: str):
                 if len(urls) >= SITEMAP_MAX_URLS:
                     break
         
-        return urls[:SITEMAP_MAX_URLS]
+        # Also try without namespace for non-standard sitemaps
+        if not urls:
+            url_entries = root.findall('.//url/loc') or root.findall('.//loc')
+            for loc in url_entries:
+                if loc.text:
+                    urls.append(loc.text)
+                if len(urls) >= SITEMAP_MAX_URLS:
+                    break
+        
+        if not urls:
+            return {
+                "error": "No URLs found",
+                "message": "The sitemap file doesn't contain any URLs. Please verify the sitemap structure.",
+                "urls": []
+            }
+        
+        return {
+            "urls": urls[:SITEMAP_MAX_URLS],
+            "total_found": len(urls),
+            "sitemap_url": sitemap_url
+        }
     
+    except requests.exceptions.Timeout:
+        return {
+            "error": "Request timeout",
+            "message": "The sitemap request timed out. Please try again or check if the URL is accessible.",
+            "urls": []
+        }
+    except requests.exceptions.RequestException as e:
+        return {
+            "error": "Network error",
+            "message": f"Failed to fetch sitemap: {str(e)}. Please verify the URL is correct and accessible.",
+            "urls": []
+        }
     except Exception as e:
-        return {"error": f"Failed to parse sitemap: {str(e)}"}
+        return {
+            "error": "Parsing failed",
+            "message": f"Unexpected error: {str(e)}",
+            "urls": []
+        }
 
 
 def categorize_link(href: str, anchor_text: str, page_domain: str):
