@@ -14,15 +14,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 from tools import (
     extract_meta_tags, 
     check_broken_links, 
-    analyze_backlinks,
-    extract_page_backlinks,
     get_page_links_by_category,
     crawl_sitemap_pages,
-    parse_sitemap,
-    get_core_web_vitals,
-    analyze_cwv_improvements
+    parse_sitemap
 )
-from agent import seo_agent_app, backlinks_agent_app, link_categorization_agent_app, core_web_vitals_agent_app
+from agent import seo_agent_app, link_categorization_agent_app
 
 app = FastAPI(title="SEO Agent API", version="1.0")
 
@@ -82,11 +78,6 @@ def tool_serp_check(request: KeywordRequest):
 @app.post("/tools/keywords")
 def tool_keyword_density(request: UrlRequest):
     return tools.analyze_keyword_density(url=request.url)
-
-@app.post("/tools/page-backlinks")
-def tool_extract_backlinks(request: UrlRequest):
-    """Extract all outbound links (backlinks) from a given page"""
-    return extract_page_backlinks(url=request.url)
 
 @app.post("/tools/links-by-category")
 def tool_categorized_links(request: UrlRequest):
@@ -154,50 +145,6 @@ def run_audit_agent(request: AuditRequest):
             }
         
         return report
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/agent/backlinks")
-def run_backlinks_agent(request: UrlRequest):
-    initial_state = {
-        "url": request.url,
-        "backlinks_data": {},
-        "analysis_report": {},
-        "errors": []
-    }
-    
-    try:
-        # Invoke LangGraph backlinks workflow
-        result = backlinks_agent_app.invoke(initial_state)
-        final_report = result["analysis_report"]
-        
-        # Check if there was an error in the report
-        if isinstance(final_report, dict) and "report" in final_report:
-            report = final_report.get("report", {})
-            
-            # Check if there was an error
-            if report.get("success") == False and "error" in report:
-                return {
-                    "quality_score": 0,
-                    "summary": "Analysis Failed",
-                    "insights": [],
-                    "recommendations": [],
-                    "data_summary": {},
-                    "error": report.get("error"),
-                    "message": report.get("message", report.get("error")),
-                    "access_blocked": report.get("access_blocked", False)
-                }
-            
-            # Successful analysis
-            return {
-                "quality_score": report.get("quality_score", 0),
-                "summary": report.get("summary", ""),
-                "insights": report.get("insights", []),
-                "recommendations": report.get("recommendations", []),
-                "data_summary": report.get("data_summary", {})
-            }
-        
-        return final_report
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -280,62 +227,6 @@ def run_link_categorization_agent(request: UrlRequest):
         return final_report
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/agent/core-web-vitals")
-def run_core_web_vitals_agent(request: UrlRequest):
-    """
-    Run the Core Web Vitals Assessment Agent to evaluate:
-    - Largest Contentful Paint (LCP)
-    - Interaction to Next Paint (INP)
-    - Cumulative Layout Shift (CLS)
-    - First Contentful Paint (FCP)
-    - Time to First Byte (TTFB)
-    
-    Provides metrics for both desktop and mobile versions.
-    """
-    initial_state = {
-        "url": request.url,
-        "cwv_data_desktop": {},
-        "cwv_data_mobile": {},
-        "analysis": {},
-        "final_report": {},
-        "errors": []
-    }
-    
-    try:
-        # Invoke LangGraph CWV workflow
-        result = core_web_vitals_agent_app.invoke(initial_state)
-        final_report = result["final_report"]
-        
-        # Check if assessment failed
-        if isinstance(final_report, dict) and final_report.get("success") == False:
-            return {
-                "success": False,
-                "error": final_report.get("error"),
-                "message": final_report.get("message"),
-                "desktop": {},
-                "mobile": {},
-                "comparison": {}
-            }
-        
-        # Successful assessment
-        return {
-            "success": True,
-            "url": final_report.get("url"),
-            "desktop": final_report.get("desktop", {}),
-            "mobile": final_report.get("mobile", {}),
-            "comparison": final_report.get("comparison", {}),
-            "errors": final_report.get("errors", [])
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "message": "Failed to assess Core Web Vitals",
-            "desktop": {},
-            "mobile": {},
-            "comparison": {}
-        }
 
 
 if __name__ == "__main__":
