@@ -228,6 +228,232 @@ def run_link_categorization_agent(request: UrlRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ============================================================================
+# BULK PROCESSING ENDPOINTS FOR SITEMAP ANALYSIS
+# ============================================================================
+
+@app.post("/agent/bulk/audit")
+def run_bulk_seo_audit(request: UrlListRequest):
+    """Run SEO audit on multiple URLs (for sitemap processing)"""
+    results = []
+    
+    for url in request.urls:
+        try:
+            initial_state = {
+                "url": url,
+                "technical_data": {},
+                "performance_data": {},
+                "content_data": {},
+                "report": {},
+                "errors": []
+            }
+            
+            result = seo_agent_app.invoke(initial_state)
+            final_report = result["report"]
+            
+            if isinstance(final_report, dict) and "report" in final_report:
+                report = final_report.get("report", {})
+                
+                if report.get("success") == False and "error" in report:
+                    results.append({
+                        "url": url,
+                        "success": False,
+                        "error": report.get("error"),
+                        "message": report.get("message")
+                    })
+                else:
+                    results.append({
+                        "url": url,
+                        "success": True,
+                        "report": report
+                    })
+            else:
+                results.append({
+                    "url": url,
+                    "success": True,
+                    "report": final_report
+                })
+            
+            time.sleep(0.2)  # Rate limiting
+            
+        except Exception as e:
+            results.append({
+                "url": url,
+                "success": False,
+                "error": str(e),
+                "message": f"Failed to analyze {url}"
+            })
+    
+    return {
+        "total_urls": len(request.urls),
+        "successful": len([r for r in results if r.get("success")]),
+        "failed": len([r for r in results if not r.get("success")]),
+        "results": results
+    }
+
+@app.post("/agent/bulk/link-categorization")
+def run_bulk_link_categorization(request: UrlListRequest):
+    """Run link categorization on multiple URLs (for sitemap processing)"""
+    results = []
+    
+    for url in request.urls:
+        try:
+            initial_state = {
+                "url": url,
+                "links_data": {},
+                "categorized_report": {},
+                "errors": []
+            }
+            
+            result = link_categorization_agent_app.invoke(initial_state)
+            final_report = result["categorized_report"]
+            
+            if isinstance(final_report, dict) and final_report.get("success") == False:
+                results.append({
+                    "url": url,
+                    "success": False,
+                    "error": final_report.get("error"),
+                    "message": final_report.get("message")
+                })
+            else:
+                results.append({
+                    "url": url,
+                    "success": True,
+                    "report": final_report
+                })
+            
+            time.sleep(0.2)  # Rate limiting
+            
+        except Exception as e:
+            results.append({
+                "url": url,
+                "success": False,
+                "error": str(e),
+                "message": f"Failed to categorize links for {url}"
+            })
+    
+    return {
+        "total_urls": len(request.urls),
+        "successful": len([r for r in results if r.get("success")]),
+        "failed": len([r for r in results if not r.get("success")]),
+        "results": results
+    }
+
+@app.post("/agent/bulk/sitemap-analyze")
+def analyze_sitemap_urls(request: SitemapRequest):
+    """
+    Parse sitemap, extract URLs, and run all enabled agents on them.
+    Returns comprehensive analysis for all URLs in the sitemap.
+    """
+    try:
+        # First, parse the sitemap
+        sitemap_data = parse_sitemap(sitemap_url=request.sitemap_url)
+        
+        if "error" in sitemap_data:
+            raise HTTPException(status_code=400, detail=sitemap_data["error"])
+        
+        urls = sitemap_data.get("urls", [])
+        
+        if not urls:
+            return {
+                "sitemap_url": request.sitemap_url,
+                "total_urls": 0,
+                "message": "No URLs found in sitemap",
+                "results": {}
+            }
+        
+        # Limit URLs if max_pages specified
+        if request.max_pages and request.max_pages > 0:
+            urls = urls[:request.max_pages]
+        
+        # Run all agents on the URLs
+        all_results = {
+            "seo": [],
+            "linkCategorization": []
+        }
+        
+        # SEO Audit for all URLs
+        for url in urls:
+            try:
+                initial_state = {
+                    "url": url,
+                    "technical_data": {},
+                    "performance_data": {},
+                    "content_data": {},
+                    "report": {},
+                    "errors": []
+                }
+                
+                result = seo_agent_app.invoke(initial_state)
+                final_report = result["report"]
+                
+                all_results["seo"].append({
+                    "url": url,
+                    "success": True,
+                    "report": final_report
+                })
+            except Exception as e:
+                all_results["seo"].append({
+                    "url": url,
+                    "success": False,
+                    "error": str(e)
+                })
+            
+            time.sleep(0.1)
+        
+        # Link Categorization for all URLs
+        for url in urls:
+            try:
+                initial_state = {
+                    "url": url,
+                    "links_data": {},
+                    "categorized_report": {},
+                    "errors": []
+                }
+                
+                result = link_categorization_agent_app.invoke(initial_state)
+                final_report = result["categorized_report"]
+                
+                all_results["linkCategorization"].append({
+                    "url": url,
+                    "success": True,
+                    "report": final_report
+                })
+            except Exception as e:
+                all_results["linkCategorization"].append({
+                    "url": url,
+                    "success": False,
+                    "error": str(e)
+                })
+            
+            time.sleep(0.1)
+        
+        # Generate summary
+        summary = {
+            "seo": {
+                "total": len(all_results["seo"]),
+                "successful": len([r for r in all_results["seo"] if r.get("success")]),
+                "failed": len([r for r in all_results["seo"] if not r.get("success")])
+            },
+            "linkCategorization": {
+                "total": len(all_results["linkCategorization"]),
+                "successful": len([r for r in all_results["linkCategorization"] if r.get("success")]),
+                "failed": len([r for r in all_results["linkCategorization"] if not r.get("success")])
+            }
+        }
+        
+        return {
+            "sitemap_url": request.sitemap_url,
+            "total_urls": len(urls),
+            "summary": summary,
+            "results": all_results
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sitemap analysis failed: {str(e)}")
+
 
 if __name__ == "__main__":
     # Get port from environment variable (Required for Cloud Run / Render)
