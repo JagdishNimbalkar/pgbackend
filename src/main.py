@@ -35,6 +35,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Optional: Firebase Admin init from env or keys file
+FIREBASE_KEYS_PATH = os.getenv("FIREBASE_KEYS_PATH", os.path.join(os.path.dirname(__file__), "firebase_keys.json"))
+if os.path.exists(FIREBASE_KEYS_PATH):
+    # Placeholder to indicate presence; do not load here unless needed
+    pass
+
 # --- Data Models ---
 class UrlRequest(BaseModel):
     url: str
